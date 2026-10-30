@@ -1,5 +1,14 @@
 # ThermOpt
 
+> [!WARNING]
+> **Projet personnel — POC, pas un produit.** ThermOpt est une preuve de
+> concept développée avec **OpenCode** pour mon usage domestique : deux
+> radiateurs, une installation, un foyer. Ce n'est ni testé, ni supporté,
+> ni maintenu au-delà de ce que décrivent `CHANGELOG.md` et `docs/phase0.md`.
+> **Ne l'utilise pas en production**, et surtout pas sur une installation dont
+> dépend le chauffage de quelqu'un d'autre : une erreur de configuration peut
+> laisser une pièce froide.
+
 Supervision du chauffage fil pilote pour Home Assistant : modèle thermique
 RC 2R2C, filtre de Kalman et optimiseur MPC, avec garde-fous de confort et
 repli natif.

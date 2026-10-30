@@ -83,34 +83,41 @@ def collect(hass: HomeAssistant, runtime: ThermOptRuntime) -> DashboardData:
     return data
 
 
-def build_view_yaml(data: DashboardData, runtime: ThermOptRuntime) -> str:
-    """Render a paste-ready Lovelace view using the real entity ids."""
+def build_dashboard_yaml(data: DashboardData) -> str:
+    """Render a paste-ready Lovelace dashboard using the real entity ids.
+
+    The output is a *complete* dashboard (``title`` + ``views``), not a bare
+    view: pasting a list where Home Assistant expects an object is the mistake
+    that produced "Expected an object, but received: [object Object]".
+    """
     lines: list[str] = [
-        "- title: ThermOpt",
-        "  path: thermopt",
-        "  icon: mdi:home-thermometer",
-        "  cards:",
+        "title: ThermOpt",
+        "views:",
+        "  - title: ThermOpt",
+        "    path: thermopt",
+        "    icon: mdi:home-thermometer",
+        "    cards:",
     ]
 
     status = data.system.get("status", "")
     last_command = data.system.get("last_command", "")
     lines += [
-        "    - type: markdown",
-        "      content: >-",
-        "        {% set actif = state_attr('" + status + "', 'pilotage_actif') %}",
-        "        {% if actif %}",
-        "        ## 🟢 Pilotage actif",
+        "      - type: markdown",
+        "        content: |",
+        "          {% set actif = state_attr('" + status + "', 'pilotage_actif') %}",
+        "          {% if actif %}",
+        "          ## 🟢 Pilotage actif",
         "",
-        "        ThermOpt applique ses ordres aux radiateurs.",
-        "        {% else %}",
-        "        ## ⚪ Pilotage inactif",
+        "          ThermOpt applique ses ordres aux radiateurs.",
+        "          {% else %}",
+        "          ## ⚪ Pilotage inactif",
         "",
-        "        **Aucun ordre n'est envoyé aux radiateurs.**",
+        "          **Aucun ordre n'est envoyé aux radiateurs.**",
         "",
-        "        {{ state_attr('" + status + "', 'raison') }}",
-        "        {% endif %}",
+        "          {{ state_attr('" + status + "', 'raison') }}",
+        "          {% endif %}",
         "",
-        "        Mode : **{{ states('"
+        "          Mode : **{{ states('"
         + status
         + "') }}** · Dernière commande : **{{ states('"
         + last_command
@@ -126,47 +133,61 @@ def build_view_yaml(data: DashboardData, runtime: ThermOptRuntime) -> str:
         ("last_cycle", "Cycle"),
     ]
     lines += [
-        "    - type: glance",
-        "      title: Superviseur",
-        "      columns: 3",
-        "      entities:",
+        "      - type: glance",
+        "        title: Superviseur",
+        "        columns: 3",
+        "        entities:",
     ]
     for key, label in glance:
         if key in data.system:
-            lines += [f"        - entity: {data.system[key]}", f"          name: {label}"]
+            lines += [f"          - entity: {data.system[key]}", f"            name: {label}"]
 
     for room_name, entities in data.rooms.items():
         lines += [
-            "    - type: entities",
-            f"      title: {room_name}",
-            "      show_header_toggle: false",
-            "      entities:",
+            "      - type: entities",
+            f"        title: {room_name}",
+            "        show_header_toggle: false",
+            "        entities:",
         ]
         for key, label in ROOM_ORDER:
             if key in entities:
-                lines += [f"        - entity: {entities[key]}", f"          name: {label}"]
+                lines += [f"          - entity: {entities[key]}", f"            name: {label}"]
 
     degraded = data.system.get("degraded")
     if degraded:
         lines += [
-            "    - type: conditional",
-            "      conditions:",
-            f"        - entity: {degraded}",
-            '          state: "on"',
-            "      card:",
-            "        type: markdown",
-            "        content: >-",
-            "          ## ⚠️ Situation dégradée",
+            "      - type: conditional",
+            "        conditions:",
+            f"          - entity: {degraded}",
+            '            state: "on"',
+            "        card:",
+            "          type: markdown",
+            "          content: |",
+            "            ## ⚠️ Situation dégradée",
             "",
-            "          {% for line in state_attr('" + degraded + "', 'details') or [] %}",
-            "          - {{ line }}",
-            "          {% endfor %}",
+            "            {% for line in state_attr('" + degraded + "', 'details') or [] %}",
+            "            - {{ line }}",
+            "            {% endfor %}",
         ]
 
     return "\n".join(lines) + "\n"
 
 
-def summary(data: DashboardData, runtime: ThermOptRuntime) -> str:
+def validate_dashboard_yaml(text: str) -> str | None:
+    """Parse the generated YAML; return an error message or ``None``."""
+    import yaml
+
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as err:
+        return f"YAML invalide : {err}"
+
+    if not isinstance(parsed, dict) or "views" not in parsed:
+        return "Le YAML généré n'est pas un tableau de bord (clé 'views' absente)."
+    return None
+
+
+def summary(data: DashboardData) -> str:
     """Short status line for the notification body."""
     rooms = ", ".join(data.rooms) or "aucune"
     text = f"{len(data.rooms)} pièce(s) : {rooms}."

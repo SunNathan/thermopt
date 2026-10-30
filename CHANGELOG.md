@@ -14,6 +14,16 @@ doit toujours correspondre au tag publié.
 - Bouton **« Générer la vue »** : produit un YAML Lovelace avec les vrais
   `entity_id` lus dans le registre, le publie dans une notification et liste
   les entités manquantes.
+
+### Corrigé
+
+- Le bouton génère désormais un **tableau de bord complet** (`title` + `views`)
+  et non un fragment de vue : coller une liste là où Home Assistant attend un
+  objet produisait « Expected an object, but received: [object Object] ».
+- `content: >-` remplacé par `content: |` dans les cartes markdown : le
+  repliement des sauts de ligne cassait la mise en forme (titres, listes).
+- Le YAML généré est validé (`yaml.safe_load` + présence de `views`) avant
+  publication ; en cas d'échec, le bouton le signale au lieu de publier.
 - Messages de dégradation lisibles avec les valeurs et la correction à
   appliquer (`degraded_detail`), exposés par `sensor.thermopt_statut` et
   `binary_sensor.thermopt_mode_degrade`.

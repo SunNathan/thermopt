@@ -1,4 +1,4 @@
-﻿name: Release
+name: Release
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: VÃ©rifier que le tag correspond au manifest
+      - name: Vérifier que le tag correspond au manifest
         run: |
           python - <<'PY'
           import json
@@ -40,13 +40,13 @@ jobs:
               )
           PY
 
-      - name: CrÃ©er la GitHub Release
+      - name: Créer la GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           name: ${{ github.ref_name }}
           body: |
-            Installation : HACS â†’ ThermOpt â†’ TÃ©lÃ©charger â†’ redÃ©marrer Home Assistant.
+            Installation : HACS → ThermOpt → Télécharger → redémarrer Home Assistant.
 
             La version de `custom_components/thermopt/manifest.json` doit rester
-            identique au tag (vÃ©rifiÃ© par ce workflow).
+            identique au tag (vérifié par ce workflow).

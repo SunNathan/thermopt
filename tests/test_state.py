@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry, device_registry
 from homeassistant.util import dt as dt_util
@@ -18,7 +19,11 @@ from custom_components.thermopt.const import (
     DOMAIN,
     SUPERVISOR_MODES,
 )
-from custom_components.thermopt.dashboard import build_view_yaml, collect
+from custom_components.thermopt.dashboard import (
+    build_dashboard_yaml,
+    collect,
+    validate_dashboard_yaml,
+)
 
 STRINGS = Path(__file__).resolve().parents[1] / "custom_components" / "thermopt" / "strings.json"
 
@@ -202,10 +207,24 @@ async def test_dashboard_generator_uses_real_entity_ids(
     assert data.rooms["Salon"]["applied_order"] == "sensor.salon_ordre_applique"
     assert "systeme: status" not in data.missing
 
-    yaml_text = build_view_yaml(data, runtime)
+    yaml_text = build_dashboard_yaml(data)
+    assert validate_dashboard_yaml(yaml_text) is None
+
+    parsed = yaml.safe_load(yaml_text)
+    assert isinstance(parsed, dict)
+    assert "views" in parsed
+
+    view = parsed["views"][0]
+    assert view["path"] == "thermopt"
+    assert [card["type"] for card in view["cards"]] == [
+        "markdown",
+        "glance",
+        "entities",
+        "conditional",
+    ]
+    # The paste target is the whole dashboard, and markdown keeps its newlines.
+    assert "\n" in view["cards"][0]["content"]
     assert "sensor.salon_temperature_mesuree" in yaml_text
-    assert "binary_sensor.thermopt_mode_degrade" in yaml_text
-    assert "type: glance" in yaml_text
 
 
 async def _setup_and_return(hass: HomeAssistant) -> MockConfigEntry:

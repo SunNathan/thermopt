@@ -80,15 +80,16 @@ dans les options de l'intégration.
 Plus : température, humidité, consignes min/max, créneau, puissance, énergie,
 problème, et un switch de supervision, ainsi que deux boutons de diagnostic.
 
-Une vue Lovelace prête à coller est fournie dans
-[`dashboards/thermopt.yaml`](dashboards/thermopt.yaml). Elle ne référence que
-les entités `sensor.thermopt_*` (dont les identifiants sont garantis) et
-construit le tableau des pièces depuis `sensor.thermopt_pieces` : aucun nom de
-pièce n'est codé en dur.
+Un **tableau de bord complet** prêt à coller est fourni dans
+[`dashboards/thermopt.yaml`](dashboards/thermopt.yaml) : *Paramètres → Tableaux
+de bord → ⋯ → Modifier → ⋯ → Éditeur de configuration brute*, tout
+sélectionner, coller. Il ne référence que les entités `sensor.thermopt_*` (dont
+les identifiants sont garantis) et construit le tableau des pièces depuis
+`sensor.thermopt_pieces` : aucun nom de pièce n'est codé en dur.
 
-Pour obtenir des cartes natives avec les vrais `entity_id`, appuie sur le
-bouton **« Générer la vue »** : il lit le registre d'entités, publie le YAML
-adapté dans une notification et liste les entités manquantes, s'il y en a.
+Pour des cartes natives avec les vrais `entity_id`, appuie sur le bouton
+**« Générer la vue »** : il lit le registre d'entités, valide le YAML produit et
+le publie dans une notification, en listant les entités manquantes s'il y en a.
 
 ## Développement
 

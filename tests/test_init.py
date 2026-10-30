@@ -56,7 +56,7 @@ SELECT_OPTIONS = [
 
 def _set_states(hass, relay: str = STATE_ON) -> None:
     hass.states.async_set("weather.home", "sunny", {"temperature": 8.0})
-    hass.states.async_set("sensor.salon_temperature", "18.4", {"unit_of_measurement": "Â°C"})
+    hass.states.async_set("sensor.salon_temperature", "18.4", {"unit_of_measurement": "°C"})
     hass.states.async_set("select.salon_pilot_wire_mode", "comfort", {"options": SELECT_OPTIONS})
     hass.states.async_set("switch.salon", relay)
     hass.states.async_set("sensor.salon_power", "780", {"unit_of_measurement": "W"})

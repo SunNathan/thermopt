@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .dashboard import build_view_yaml, collect, summary
+from .dashboard import build_dashboard_yaml, collect, summary, validate_dashboard_yaml
 from .entity import ThermOptEntity, hub_device_info
 from .runtime import ThermOptRuntime
 
@@ -65,16 +65,33 @@ class ThermOptDashboardButton(_ThermOptButton):
         from homeassistant.components import persistent_notification
 
         data = collect(self.runtime.hass, self.runtime)
-        yaml_text = build_view_yaml(data, self.runtime)
+        yaml_text = build_dashboard_yaml(data)
+        error = validate_dashboard_yaml(yaml_text)
+
+        if error:
+            body = (
+                f"Le YAML généré est invalide, il n'a pas été publié.\n\n**{error}**\n\n"
+                f"```yaml\n{yaml_text}```"
+            )
+        else:
+            body = (
+                f"{summary(data)}\n\n"
+                "**Paramètres → Tableaux de bord → ⋯ → Modifier → ⋯ → "
+                "Éditeur de configuration brute**, puis **tout sélectionner** et coller "
+                "ce bloc à la place :\n\n"
+                f"```yaml\n{yaml_text}```"
+            )
+
         _LOGGER.info(
-            "ThermOpt dashboard for entry %s:\n%s",
+            "ThermOpt dashboard for entry %s (valid=%s):\n%s",
             self.runtime.entry.entry_id,
+            error is None,
             yaml_text,
         )
         persistent_notification.async_create(
             self.runtime.hass,
-            f"{summary(data, self.runtime)}\n\n```yaml\n{yaml_text}```",
-            title="ThermOpt — vue à coller",
+            body,
+            title="ThermOpt — tableau de bord à coller",
             notification_id="thermopt_dashboard",
         )
 

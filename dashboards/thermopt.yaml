@@ -1,16 +1,19 @@
-# ThermOpt — vue Lovelace prête à coller
+# ThermOpt — tableau de bord prêt à coller
 #
-# Utilisation : Tableau de bord -> Modifier -> ⋮ -> Éditeur de configuration brute,
-# puis ajouter ce bloc dans `views:`.
+# Utilisation : Paramètres -> Tableaux de bord -> ⋯ -> Modifier -> ⋯ ->
+# Éditeur de configuration brute, puis TOUT SÉLECTIONNER et remplacer par ce
+# fichier. C'est un tableau de bord complet (title + views), pas un fragment :
+# coller un fragment de vue provoque l'erreur
+# « Expected an object, but received: [object Object] ».
 #
 # Cette vue ne référence QUE des entités dont l'identifiant est garanti
 # (sensor.thermopt_*). Les pièces sont lues depuis les attributs de
-# sensor.thermopt_pieces : aucun nom de pièce n'est codé en dur, donc la vue
-# fonctionne quel que soit le nom que tu as donné à tes pièces.
+# sensor.thermopt_pieces : aucun nom de pièce n'est codé en dur.
 #
-# Pour obtenir des cartes natives par pièce (avec les vrais entity_id),
-# appuie sur le bouton « Générer la vue » de l'intégration : il produit un YAML
+# Pour des cartes natives par pièce (avec les vrais entity_id), appuie sur le
+# bouton « Générer la vue » de l'intégration : il produit un tableau de bord
 # adapté et le publie dans une notification.
+title: ThermOpt
 views:
   - title: ThermOpt
     path: thermopt
@@ -18,7 +21,7 @@ views:
     cards:
       # --- La question centrale : est-ce que ça pilote le chauffage ? ---
       - type: markdown
-        content: >-
+        content: |
           {% set actif = state_attr('sensor.thermopt_statut', 'pilotage_actif') %}
           {% if actif %}
           ## 🟢 Pilotage actif
@@ -54,7 +57,7 @@ views:
 
       # --- Tableau des pièces, construit depuis les attributs ---
       - type: markdown
-        content: >-
+        content: |
           {%- set rooms = state_attr('sensor.thermopt_pieces', 'rooms') or [] -%}
           {%- if rooms %}
           | Pièce | Température | Consigne | Ordre appliqué | Source | Puissance |
@@ -73,9 +76,9 @@ views:
             state: "on"
         card:
           type: markdown
-          content: >-
+          content: |
             ## ⚠️ Situation dégradée
 
-            {%- for line in state_attr('binary_sensor.thermopt_mode_degrade', 'details') or [] %}
+            {% for line in state_attr('binary_sensor.thermopt_mode_degrade', 'details') or [] %}
             - {{ line }}
-            {%- endfor %}
+            {% endfor %}

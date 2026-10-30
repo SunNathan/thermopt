@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ThermOpt</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fafafa; --fg: #1c1c1c; --card: #fff;
+          --border: #e3e7ec; --muted: #5f6b7a; --accent: #2d6cdf; --ok: #2e7d32; --ko: #c62828; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --fg: #e8eaed; --card: #1b1f24; --border: #2a3038; --muted: #9aa4b2; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--fg); line-height: 1.5; }
+  header { display: flex; align-items: center; gap: 20px; padding: 14px 24px;
+           border-bottom: 1px solid var(--border); background: var(--card); position: sticky; top: 0; }
+  header h1 { font-size: 1.05rem; margin: 0; }
+  nav a { color: var(--muted); text-decoration: none; margin-right: 14px; font-size: .92rem; }
+  nav a.active { color: var(--accent); font-weight: 600; }
+  main { padding: 24px; max-width: 1200px; }
+  .cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .card h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em;
+             margin: 0 0 8px; color: var(--muted); }
+  .value { font-size: 1.5rem; font-weight: 600; }
+  .ok { color: var(--ok); } .ko { color: var(--ko); }
+  .muted { color: var(--muted); font-size: .88rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; }
+  .banner { border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: .92rem; }
+  .banner.warn { background: rgba(198, 40, 40, .12); border: 1px solid rgba(198, 40, 40, .35); }
+  .banner.info { background: rgba(45, 108, 223, .10); border: 1px solid rgba(45, 108, 223, .3); }
+  .banner.ok { background: rgba(46, 125, 50, .10); border: 1px solid rgba(46, 125, 50, .3); }
+  form { margin: 0; }
+  fieldset { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 0 0 20px;
+             background: var(--card); }
+  legend { padding: 0 8px; font-weight: 600; font-size: .95rem; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=number], input:not([type]) {
+    width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--fg); font: inherit; }
+  .grid2 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+           border: 1px solid var(--border); background: var(--card); color: var(--fg); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { color: var(--ko); }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  .errors { list-style: none; padding: 0; margin: 0; }
+  .errors li { padding: 6px 0; }
+  footer { padding: 24px; color: var(--muted); font-size: .85rem; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ThermOpt</h1>
+  <nav>
+    <a href="./" class="{{ 'active' if active == 'dashboard' }}">Tableau de bord</a>
+    <a href="config" class="{{ 'active' if active == 'config' }}">Configuration</a>
+  </nav>
+  <span class="muted" style="margin-left:auto">{{ runtime.version }}</span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>
+  Application ThermOpt — projet personnel, POC sans support.
+</footer>
+</body>
+</html>

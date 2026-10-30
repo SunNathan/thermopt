@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,14 @@ APP_DIR = ROOT / "thermopt_app"
 for path in (str(ROOT), str(INTEGRATION_DIR), str(APP_DIR)):
     if path not in sys.path:
         sys.path.insert(0, path)
+
+# The app imports the pure modules as ``thermopt_lib`` (that is how they are
+# laid out inside the container). Point the name at the integration directory
+# so tests use the very same files, without running its ``__init__``.
+if "thermopt_lib" not in sys.modules:
+    _lib = types.ModuleType("thermopt_lib")
+    _lib.__path__ = [str(INTEGRATION_DIR)]  # type: ignore[attr-defined]
+    sys.modules["thermopt_lib"] = _lib
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 

@@ -66,31 +66,44 @@ class SupervisorClient:
     def headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}"}
 
-    async def _get(self, url: str) -> object:
+    async def _request(self, method: str, path: str, payload: dict | None = None) -> object:
+        url = f"{SUPERVISOR_URL}{path}"
         for attempt in range(2):
             try:
-                async with self.session.get(url, headers=self.headers) as response:
+                async with self.session.request(
+                    method, url, headers=self.headers, json=payload
+                ) as response:
                     if response.status >= 400:
                         body = await response.text()
-                        raise SupervisorError(f"{url} -> {response.status}: {body[:200]}")
-                    return await response.json()
+                        raise SupervisorError(f"{path} -> {response.status}: {body[:200]}")
+                    if response.content_type == "application/json":
+                        return await response.json()
+                    return {}
             except (TimeoutError, ClientError) as err:
                 if attempt == 1:
-                    raise SupervisorError(f"{url} unreachable: {err}") from err
-                _LOGGER.debug("Retrying %s after %s", url, err)
+                    raise SupervisorError(f"{path} unreachable: {err}") from err
+                _LOGGER.debug("Retrying %s after %s", path, err)
                 await asyncio.sleep(2)
-        raise SupervisorError(f"{url} unreachable")
+        raise SupervisorError(f"{path} unreachable")
+
+    async def get(self, path: str) -> object:
+        """GET on the Supervisor (``/addons/...``) or the Core proxy."""
+        return await self._request("GET", path)
+
+    async def post(self, path: str, payload: dict | None = None) -> object:
+        """POST, used for Home Assistant service calls."""
+        return await self._request("POST", path, payload or {})
 
     async def core_config(self) -> dict:
         """Home Assistant version and metadata (proves the proxy works)."""
-        payload = await self._get(f"{SUPERVISOR_URL}/core/api/config")
+        payload = await self.get("/core/api/config")
         if not isinstance(payload, dict):
             raise SupervisorError("unexpected /core/api/config payload")
         return payload
 
     async def mqtt_service(self) -> MqttCredentials:
         """Broker credentials granted by ``services: [mqtt:want]``."""
-        payload = await self._get(f"{SUPERVISOR_URL}/services/mqtt")
+        payload = await self.get("/services/mqtt")
         data = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(data, dict):
             raise SupervisorError("MQTT service not available")

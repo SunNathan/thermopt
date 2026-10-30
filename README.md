@@ -51,8 +51,8 @@ L'app publie ses entités via MQTT discovery (le broker Mosquitto de
 Zigbee2MQTT convient, les identifiants sont fournis par le Supervisor) et ses
 mises à jour passent par le bouton **Mettre à jour** de l'App store.
 
-État actuel : **phase A** — squelette installable, page d'administration, capteur
-de santé. Les garde-fous et l'optimisation arrivent aux phases suivantes.
+État actuel : **phase B** — configuration complète dans l'interface web,
+perception et garde-fous actifs. L'optimisation tarifaire arrive ensuite.
 
 ### Intégration (historique)
 

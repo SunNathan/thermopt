@@ -1,5 +1,5 @@
 name: "ThermOpt"
-version: "0.2.0"
+version: "0.3.0"
 slug: "thermopt"
 description: "Pilotage optimal du chauffage fil pilote (POC personnel)"
 url: "https://github.com/SunNathan/thermopt"

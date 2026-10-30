@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if message %}<div class="banner info">{{ message }}</div>{% endif %}
+{% if errors %}
+<div class="banner warn"><strong>Configuration refusée</strong>
+  <ul class="errors">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="config">
+  <fieldset>
+    <legend>Pièces</legend>
+    {% for room in rooms %}
+    <div class="card" style="margin-bottom:14px">
+      <input type="hidden" name="room_{{ loop.index0 }}_id" value="{{ room.id }}">
+      <div class="grid2">
+        <div>
+          <label>Nom de la pièce</label>
+          <input type="text" name="room_{{ loop.index0 }}_name" value="{{ room.name }}" placeholder="Salon">
+        </div>
+        <div>
+          <label>Capteur de température</label>
+          <input type="text" name="room_{{ loop.index0 }}_temp" value="{{ room.temp_entity or '' }}"
+                 list="entities-sensor" placeholder="sensor.salon_temperature">
+        </div>
+        <div>
+          <label>Fil pilote (select)</label>
+          <input type="text" name="room_{{ loop.index0 }}_fil" value="{{ room.fil_pilote_entity or '' }}"
+                 list="entities-select" placeholder="select.salon_pilot_wire_mode">
+        </div>
+        <div>
+          <label>Relais du module (switch)</label>
+          <input type="text" name="room_{{ loop.index0 }}_relay" value="{{ room.relay_entity or '' }}"
+                 list="entities-switch" placeholder="switch.salon">
+        </div>
+        <div>
+          <label>Puissance mesurée</label>
+          <input type="text" name="room_{{ loop.index0 }}_power" value="{{ room.power_entity or '' }}"
+                 list="entities-sensor" placeholder="sensor.salon_power">
+        </div>
+        <div>
+          <label>Énergie cumulée</label>
+          <input type="text" name="room_{{ loop.index0 }}_energy" value="{{ room.energy_entity or '' }}"
+                 list="entities-sensor" placeholder="sensor.salon_energy">
+        </div>
+        <div>
+          <label>Humidité (optionnel)</label>
+          <input type="text" name="room_{{ loop.index0 }}_humidity" value="{{ room.humidity_entity or '' }}"
+                 list="entities-sensor" placeholder="sensor.salon_humidity">
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" name="delete_room" value="{{ room.id }}" class="danger"
+                formnovalidate>Supprimer cette pièce</button>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="actions">
+      <button type="submit" name="action" value="add" formnovalidate>+ Ajouter une pièce</button>
+    </div>
+    <div class="muted">
+      « Ajouter » et « Supprimer » modifient le formulaire sans enregistrer : clique ensuite sur
+      Enregistrer.
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Système</legend>
+    <div class="grid2">
+      <div>
+        <label>Entité météo</label>
+        <input type="text" name="weather_entity" value="{{ config.weather_entity or '' }}"
+               list="entities-weather" placeholder="weather.home">
+      </div>
+      <div>
+        <label>Interrupteur auto/manuel (optionnel)</label>
+        <input type="text" name="auto_entity" value="{{ config.auto_entity or '' }}"
+               placeholder="input_boolean.thermopt_auto">
+      </div>
+      <div>
+        <label>Helper de repli</label>
+        <input type="text" name="fallback_entity" value="{{ config.fallback_entity }}"
+               placeholder="input_boolean.thermopt_repli">
+      </div>
+      <div>
+        <label>Mode</label>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--fg)">
+          <input type="checkbox" name="active" {{ "checked" if config.active }}>
+          Écriture autorisée (sinon observation)
+        </label>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Tarif</legend>
+    <div class="grid2">
+      <div>
+        <label>Prix Heures Pleines (€/kWh)</label>
+        <input type="number" step="0.0001" name="hp_price" value="{{ config.hp_price }}">
+      </div>
+      <div>
+        <label>Prix Heures Creuses (€/kWh)</label>
+        <input type="number" step="0.0001" name="hc_price" value="{{ config.hc_price }}">
+      </div>
+      <div>
+        <label>Plages Heures Creuses</label>
+        <input type="text" name="hc_windows" value="{{ config.hc_windows }}"
+               placeholder="22:00-06:00, 12:00-14:00">
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Fil pilote</legend>
+    <div class="grid2">
+      <div>
+        <label>Consigne Confort du radiateur (°C)</label>
+        <input type="number" step="0.5" name="comfort_setpoint" value="{{ config.comfort_setpoint }}">
+      </div>
+      <div>
+        <label>Consigne Hors-gel (°C)</label>
+        <input type="number" step="0.5" name="frost_setpoint" value="{{ config.frost_setpoint }}">
+      </div>
+    </div>
+    <table style="margin-top:12px">
+      <thead><tr><th>Ordre</th><th>Consigne effective</th></tr></thead>
+      <tbody>
+      {% for label, value in ladder %}<tr><td>{{ label }}</td><td>{{ value }} °C</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+
+  <fieldset>
+    <legend>Profil de confort</legend>
+    <div class="grid2">
+      {% for slot in slots %}
+      <div>
+        <label>Début {{ slot_labels[slot] }}</label>
+        <input type="text" name="start_{{ slot }}" value="{{ config.starts[slot] }}" placeholder="08:30">
+      </div>
+      <div>
+        <label>{{ slot_labels[slot] }} — semaine (°C)</label>
+        <input type="number" step="0.5" name="weekday_{{ slot }}" value="{{ config.weekday[slot] }}">
+      </div>
+      <div>
+        <label>{{ slot_labels[slot] }} — week-end (°C)</label>
+        <input type="number" step="0.5" name="weekend_{{ slot }}" value="{{ config.weekend[slot] }}">
+      </div>
+      {% endfor %}
+      <div>
+        <label>Journée — télétravail (°C)</label>
+        <input type="number" step="0.5" name="present_day" value="{{ config.present_day }}">
+      </div>
+      <div>
+        <label>Tolérance (K)</label>
+        <input type="number" step="0.1" name="tolerance" value="{{ config.tolerance }}">
+      </div>
+      <div>
+        <label>Marge haute (K)</label>
+        <input type="number" step="0.1" name="high_margin" value="{{ config.high_margin }}">
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit" class="primary">Enregistrer</button>
+  </div>
+</form>
+
+<datalist id="entities-sensor">
+  {% for entity in sensors %}<option value="{{ entity }}">{% endfor %}
+</datalist>
+<datalist id="entities-select">
+  {% for entity in selects %}<option value="{{ entity }}">{% endfor %}
+</datalist>
+<datalist id="entities-switch">
+  {% for entity in switches %}<option value="{{ entity }}">{% endfor %}
+</datalist>
+<datalist id="entities-weather">
+  {% for entity in weather %}<option value="{{ entity }}">{% endfor %}
+</datalist>
+
+{% endblock %}

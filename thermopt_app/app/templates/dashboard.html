@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if runtime.config.active and runtime.fallback_active %}
+<div class="banner warn">
+  <strong>Écriture suspendue : repli natif actif.</strong>
+  Le helper <code>{{ runtime.config.fallback_entity }}</code> est à <code>on</code>.
+  L'application calcule mais n'écrit rien. Désactive l'automatisation de repli et remets ce helper à
+  <code>off</code> pour reprendre la main.
+</div>
+{% elif runtime.integration_present %}
+<div class="banner warn">
+  <strong>Deux superviseurs détectés.</strong>
+  Des entités <code>sensor.thermopt_*</code> existent déjà dans Home Assistant : l'ancienne intégration
+  est encore installée. Désinstalle-la avant de passer l'application en mode actif, sinon deux boucles
+  piloteront le même radiateur.
+</div>
+{% endif %}
+
+{% if errors is defined and errors %}
+<div class="banner warn"><ul class="errors">
+  {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+</ul></div>
+{% endif %}
+
+<div class="cards">
+  <div class="card">
+    <h2>Mode</h2>
+    <div class="value {{ 'ok' if mode == 'actif' else 'ko' }}">{{ mode }}</div>
+    <div class="muted">
+      {{ "les garde-fous peuvent écrire" if mode == "actif" else "aucune écriture" }}
+    </div>
+    <form method="post" action="active" style="margin-top:10px">
+      <button type="submit">{{ "Passer en observation" if runtime.config.active else "Passer en actif" }}</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Dernier cycle</h2>
+    <div class="value">{{ cycle.strftime("%H:%M") if cycle else "—" }}</div>
+    <div class="muted">{{ degraded | length }} alerte(s)</div>
+  </div>
+
+  <div class="card">
+    <h2>Home Assistant</h2>
+    <div class="value">{{ runtime.ha_version }}</div>
+    <div class="muted">{{ runtime.ha_location or "—" }}</div>
+  </div>
+
+  <div class="card">
+    <h2>MQTT</h2>
+    <div class="value {{ 'ok' if runtime.mqtt_connected else 'ko' }}">
+      {{ "connecté" if runtime.mqtt_connected else "hors ligne" }}
+    </div>
+    <div class="muted">{{ runtime.mqtt_detail }}</div>
+  </div>
+</div>
+
+{% if degraded %}
+<div class="banner warn">
+  <strong>Alertes du dernier cycle</strong>
+  <ul class="errors">{% for item in degraded %}<li>{{ item }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<h2 style="margin-top:28px">Pièces</h2>
+{% if rooms %}
+<table>
+  <thead>
+    <tr><th>Pièce</th><th>Température</th><th>Consigne min</th><th>Ordre</th><th>Puissance</th><th>Sécurité</th></tr>
+  </thead>
+  <tbody>
+  {% for room in rooms %}
+    <tr>
+      <td><strong>{{ room.name }}</strong></td>
+      <td>{{ room.temperature or "—" }}</td>
+      <td>{{ room.target_min if room.target_min is defined else "—" }}</td>
+      <td>{{ room.order_label or room.order or "—" }}</td>
+      <td>{{ room.power or "—" }}</td>
+      <td>{{ room.safety }}{% if room.safety_reason %} <span class="muted">— {{ room.safety_reason }}</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="banner info">Aucune pièce configurée. Commence par la <a href="config">configuration</a>.</div>
+{% endif %}
+
+<h2 style="margin-top:28px">Échelle d'ordres</h2>
+<table>
+  <thead><tr><th>Ordre</th><th>Consigne effective</th></tr></thead>
+  <tbody>
+  {% for label, value in ladder %}
+    <tr><td>{{ label }}</td><td>{{ value }} °C</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="muted" style="margin-top:8px">
+  Si les cibles de ton profil ne tombent pas sur ces valeurs, augmente ou baisse la consigne Confort
+  du radiateur — c'est elle qui décale toute l'échelle.
+</div>
+
+{% endblock %}

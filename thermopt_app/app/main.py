@@ -1,9 +1,8 @@
 """Entry point of the ThermOpt app.
 
-Milestone A: prove the delivery chain. The container connects to the Supervisor,
-publishes one MQTT-discovered entity, serves an ingress page and a health
-endpoint. The supervision loop, the safety layer and the configuration UI are
-added in the next milestones.
+Milestone B: configuration, perception and safety. The container talks to Home
+Assistant through the Supervisor proxy, publishes its entities with MQTT
+discovery, and executes the guard rails when the app is in active mode.
 """
 
 from __future__ import annotations
@@ -14,27 +13,24 @@ import logging
 import os
 import platform
 import signal
-from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .discovery import (
-    AVAILABILITY_TOPIC,
-    HEALTH_ATTRIBUTES_TOPIC,
-    HEALTH_STATE_TOPIC,
-    PAYLOAD_ONLINE,
-    build_health_config,
-    health_config_topic,
-)
+from .config import AppConfig
+from .ha import HaClient
+from .loop import SupervisionLoop
 from .mqtt import MqttPublisher
 from .options import Options
+from .publish import Publisher
+from .store import JsonStore
 from .supervisor import SupervisorClient, SupervisorError
 from .web import WebRuntime, start_site
 
 _LOGGER = logging.getLogger(__name__)
 
 VERSION = os.environ.get("THERMOPT_VERSION", "dev")
-PUBLISH_INTERVAL = 30
 STARTUP_RETRIES = 10
 STARTUP_DELAY = 6
+HEALTH_INTERVAL = 30
 
 
 def _configure_logging(level: str) -> None:
@@ -44,8 +40,7 @@ def _configure_logging(level: str) -> None:
     )
 
 
-async def _connect_supervisor(runtime: WebRuntime) -> SupervisorClient:
-    """Retry until Home Assistant is reachable, then record what we learned."""
+async def _connect(runtime: WebRuntime) -> SupervisorClient:
     client = SupervisorClient()
     await client.__aenter__()
 
@@ -53,92 +48,122 @@ async def _connect_supervisor(runtime: WebRuntime) -> SupervisorClient:
         try:
             config = await client.core_config()
         except SupervisorError as err:
-            _LOGGER.warning("Home Assistant not ready (%s/%s): %s", attempt, STARTUP_RETRIES, err)
+            _LOGGER.warning(
+                "Home Assistant pas encore prêt (%s/%s) : %s", attempt, STARTUP_RETRIES, err
+            )
             await asyncio.sleep(STARTUP_DELAY)
             continue
 
         runtime.ha_version = str(config.get("version", "?"))
-        runtime.ha_location = str(config.get("location_name") or config.get("time_zone") or "")
-        _LOGGER.info("Connected to Home Assistant %s", runtime.ha_version)
+        runtime.ha_location = str(config.get("location_name") or "")
+        _LOGGER.info("Connecté à Home Assistant %s", runtime.ha_version)
         return client
 
-    raise SupervisorError("Home Assistant unreachable after retries")
+    raise SupervisorError("Home Assistant injoignable après plusieurs tentatives")
 
 
-async def _publish_state(publisher: MqttPublisher, runtime: WebRuntime) -> None:
-    healthy = runtime.mqtt_connected
-    await publisher.publish(HEALTH_STATE_TOPIC, "ok" if healthy else "degraded")
-    await publisher.publish_json(
-        HEALTH_ATTRIBUTES_TOPIC,
-        {
-            "version": runtime.version,
-            "home_assistant": runtime.ha_version,
-            "mqtt": runtime.mqtt_connected,
-            "architecture": platform.machine(),
-            "started_at": runtime.started_at.isoformat(timespec="seconds"),
-            "heartbeat": datetime.now().isoformat(timespec="seconds"),
-        },
-    )
+def _timezone(name: str | None):
+    if name:
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            _LOGGER.warning("Fuseau inconnu %s, UTC utilisé", name)
+    return ZoneInfo("UTC")
+
+
+async def _health_loop(runtime: WebRuntime, stop: asyncio.Event) -> None:
+    """Keep the web page honest even when MQTT drops."""
+    while not stop.is_set():
+        runtime.healthy = runtime.mqtt_connected and runtime.loop is not None
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=HEALTH_INTERVAL)
+        except TimeoutError:
+            continue
 
 
 async def run() -> None:
     options = Options.load()
     _configure_logging(options.log_level)
-    _LOGGER.info("ThermOpt app %s starting (%s)", VERSION, platform.machine())
+    _LOGGER.info("ThermOpt app %s démarrage (%s)", VERSION, platform.machine())
 
-    runtime = WebRuntime(VERSION)
+    store = JsonStore()
+    config = AppConfig.from_dict(store.load())
+    runtime = WebRuntime(VERSION, config)
+
     runner = await start_site(runtime)
 
     client: SupervisorClient | None = None
-    publisher: MqttPublisher | None = None
+    mqtt: MqttPublisher | None = None
+    loop_task: asyncio.Task | None = None
+    health_task: asyncio.Task | None = None
     stop = asyncio.Event()
 
     def _stop(*_: object) -> None:
-        _LOGGER.info("Stopping")
+        _LOGGER.info("Arrêt demandé")
         stop.set()
 
-    loop = asyncio.get_running_loop()
+    asyncio_loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         with contextlib.suppress(NotImplementedError):  # pragma: no cover - Windows
-            loop.add_signal_handler(sig, _stop)
+            asyncio_loop.add_signal_handler(sig, _stop)
 
     try:
-        client = await _connect_supervisor(runtime)
+        client = await _connect(runtime)
+        core_config = await client.core_config()
+        tz = _timezone(core_config.get("time_zone"))
+
+        ha = HaClient(client)
+        await ha.refresh_states()
+        runtime.states = ha.cached()
 
         try:
             credentials = await client.mqtt_service()
         except SupervisorError as err:
             runtime.mqtt_detail = f"broker indisponible : {err}"
-            _LOGGER.error("MQTT broker unavailable: %s", err)
+            _LOGGER.error("Broker MQTT indisponible : %s", err)
+            publisher = None
         else:
-            publisher = MqttPublisher(credentials)
-            await publisher.start()
-            await asyncio.sleep(2)  # let the connection come up
-
-            runtime.mqtt_connected = publisher.connected
+            mqtt = MqttPublisher(credentials)
+            await mqtt.start()
+            await asyncio.sleep(2)
+            runtime.mqtt_connected = mqtt.connected
             runtime.mqtt_detail = f"{credentials.host}:{credentials.port}"
-            runtime.healthy = True
+            publisher = Publisher(mqtt, VERSION)
 
-            await publisher.publish_json(health_config_topic(), build_health_config(VERSION))
-            await publisher.publish(AVAILABILITY_TOPIC, PAYLOAD_ONLINE, retain=True)
-            await _publish_state(publisher, runtime)
+        if publisher is None:
+            raise SupervisorError("MQTT requis pour publier les entités")
 
-        while not stop.is_set():
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(stop.wait(), timeout=PUBLISH_INTERVAL)
+        supervisor_loop = SupervisionLoop(ha, publisher, config, tz)
+        runtime.loop = supervisor_loop
 
-            if publisher is not None:
-                runtime.mqtt_connected = publisher.connected
-                runtime.healthy = publisher.connected
-                await _publish_state(publisher, runtime)
+        await publisher.publish_discovery(config)
+
+        def save_config(candidate: AppConfig) -> None:
+            store.backup()
+            store.save(candidate.to_dict())
+            runtime.config = candidate
+            asyncio.create_task(publisher.publish_discovery(candidate))
+
+        runtime.save_config = save_config
+
+        loop_task = asyncio.create_task(supervisor_loop.run(stop), name="supervision")
+        health_task = asyncio.create_task(_health_loop(runtime, stop), name="health")
+
+        await stop.wait()
 
     finally:
-        if publisher is not None:
-            await publisher.stop()
+        stop.set()
+        for task in (loop_task, health_task):
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        if mqtt is not None:
+            await mqtt.stop()
         if client is not None:
             await client.close()
         await runner.cleanup()
-        _LOGGER.info("ThermOpt app stopped")
+        _LOGGER.info("ThermOpt app arrêtée")
 
 
 def main() -> None:

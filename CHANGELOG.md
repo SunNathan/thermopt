@@ -6,6 +6,13 @@ doit toujours correspondre au tag publié.
 
 ## [Unreleased]
 
+### Corrigé
+
+- **Redirection après enregistrement** : `Location: /` renvoyait vers l'accueil
+  de Home Assistant, puisque l'app est servie sous
+  `/api/hassio_ingress/<token>/`. Les redirections sont désormais relatives
+  (`./`), y compris après la bascule actif/observation.
+
 ### Ajouté
 
 - **Phase C : collecte persistante et audit.**

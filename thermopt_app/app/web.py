@@ -219,7 +219,8 @@ def create_app(runtime: WebRuntime) -> web.Application:
         if runtime.loop is not None:
             runtime.loop.apply_config(candidate)
 
-        raise web.HTTPFound("/")
+        # Relative: under ingress an absolute "/" would send the browser to Home Assistant.
+        raise web.HTTPFound("./")
 
     async def toggle_active(request: web.Request) -> web.Response:
         _guard(request)
@@ -228,7 +229,8 @@ def create_app(runtime: WebRuntime) -> web.Application:
             runtime.save_config(runtime.config)
         if runtime.loop is not None:
             runtime.loop.apply_config(runtime.config)
-        raise web.HTTPFound("/")
+        # Relative: under ingress an absolute "/" would send the browser to Home Assistant.
+        raise web.HTTPFound("./")
 
     async def _history_rows() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from aiohttp.test_utils import TestClient, TestServer
 from app.config import AppConfig, RoomConfig
-from app.web import WebRuntime, create_app
+from app.web import REDIRECT_HOME, WebRuntime, create_app
 
 FORM = {
     "room_0_id": "abc",
@@ -65,7 +65,7 @@ async def _client(runtime: WebRuntime) -> TestClient:
     return client
 
 
-async def test_config_save_redirects_relatively() -> None:
+async def test_config_save_redirects_relatively(socket_enabled) -> None:
     client = await _client(_runtime())
     try:
         response = await client.post("/config", data=FORM, allow_redirects=False)
@@ -78,7 +78,7 @@ async def test_config_save_redirects_relatively() -> None:
         await client.close()
 
 
-async def test_toggle_active_redirects_relatively() -> None:
+async def test_toggle_active_redirects_relatively(socket_enabled) -> None:
     client = await _client(_runtime())
     try:
         response = await client.post("/active", allow_redirects=False)
@@ -90,7 +90,7 @@ async def test_toggle_active_redirects_relatively() -> None:
         await client.close()
 
 
-async def test_invalid_config_is_refused_without_redirect() -> None:
+async def test_invalid_config_is_refused_without_redirect(socket_enabled) -> None:
     client = await _client(_runtime())
     try:
         broken = dict(FORM)
@@ -103,7 +103,7 @@ async def test_invalid_config_is_refused_without_redirect() -> None:
         await client.close()
 
 
-async def test_saving_persists_through_the_callback() -> None:
+async def test_saving_persists_through_the_callback(socket_enabled) -> None:
     runtime = _runtime()
     saved: list[AppConfig] = []
     runtime.save_config = saved.append
@@ -118,7 +118,7 @@ async def test_saving_persists_through_the_callback() -> None:
         await client.close()
 
 
-async def test_home_page_renders() -> None:
+async def test_home_page_renders(socket_enabled) -> None:
     client = await _client(_runtime())
     try:
         response = await client.get("/")
@@ -128,3 +128,9 @@ async def test_home_page_renders() -> None:
         assert 'href="./"' in body
     finally:
         await client.close()
+
+
+def test_redirect_target_is_relative() -> None:
+    """Cheap guard: the constant itself must never become absolute."""
+    assert REDIRECT_HOME == "./"
+    assert not REDIRECT_HOME.startswith("/")

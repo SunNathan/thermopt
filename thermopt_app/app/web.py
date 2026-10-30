@@ -32,6 +32,9 @@ _LOGGER = logging.getLogger(__name__)
 
 SUPERVISOR_IP = "172.30.32.2"
 INGRESS_PORT = 8099
+# Under ingress an absolute "/" would send the browser to Home Assistant.
+# A relative target resolves against the current request URI instead.
+REDIRECT_HOME = "./"
 SLOT_LABELS = {
     SLOT_NIGHT: "Nuit",
     SLOT_MORNING: "Matin",
@@ -219,8 +222,7 @@ def create_app(runtime: WebRuntime) -> web.Application:
         if runtime.loop is not None:
             runtime.loop.apply_config(candidate)
 
-        # Relative: under ingress an absolute "/" would send the browser to Home Assistant.
-        raise web.HTTPFound("./")
+        raise web.HTTPFound(REDIRECT_HOME)
 
     async def toggle_active(request: web.Request) -> web.Response:
         _guard(request)
@@ -229,8 +231,7 @@ def create_app(runtime: WebRuntime) -> web.Application:
             runtime.save_config(runtime.config)
         if runtime.loop is not None:
             runtime.loop.apply_config(runtime.config)
-        # Relative: under ingress an absolute "/" would send the browser to Home Assistant.
-        raise web.HTTPFound("./")
+        raise web.HTTPFound(REDIRECT_HOME)
 
     async def _history_rows() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []

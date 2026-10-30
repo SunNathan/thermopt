@@ -20,6 +20,7 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_AUTO_ENTITY,
     CONF_COMFORT_SETPOINT,
+    CONF_FALLBACK_ENTITY,
     CONF_FROST_SETPOINT,
     CONF_HC_BINARY_ENTITY,
     CONF_HC_PRICE,
@@ -27,6 +28,7 @@ from .const import (
     CONF_HIGH_MARGIN,
     CONF_HP_PRICE,
     CONF_PRESENCE_ENTITY,
+    CONF_ROOM_AREA,
     CONF_ROOM_ENERGY_ENTITY,
     CONF_ROOM_FIL_PILOTE_ENTITY,
     CONF_ROOM_HUMIDITY_ENTITY,
@@ -53,6 +55,7 @@ from .const import (
     CONF_TOLERANCE,
     CONF_WEATHER_ENTITY,
     DEFAULT_COMFORT_SETPOINT,
+    DEFAULT_FALLBACK_ENTITY,
     DEFAULT_FROST_SETPOINT,
     DEFAULT_HC_PRICE,
     DEFAULT_HC_WINDOWS,
@@ -62,6 +65,7 @@ from .const import (
     SUBENTRY_ROOM,
 )
 from .core.orders import Ladder, Order
+from .discovery import guess_room_entities
 from .perception.comfort import (
     DEFAULT_HIGH_MARGIN,
     DEFAULT_PRESENT_DAY,
@@ -155,6 +159,11 @@ def system_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             data.get(CONF_PRESENCE_ENTITY),
         ),
         _entity(CONF_HC_BINARY_ENTITY, "binary_sensor", data.get(CONF_HC_BINARY_ENTITY)),
+        _entity(
+            CONF_FALLBACK_ENTITY,
+            "input_boolean",
+            data.get(CONF_FALLBACK_ENTITY, DEFAULT_FALLBACK_ENTITY),
+        ),
         _number(
             CONF_HP_PRICE,
             float(data.get(CONF_HP_PRICE, DEFAULT_HP_PRICE)),
@@ -296,10 +305,16 @@ def comfort_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 def room_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     """Actuator, sensors and thermal priors for one room."""
     data = defaults or {}
+    area = data.get(CONF_ROOM_AREA)
+    area_key = vol.Optional(CONF_ROOM_AREA, default=area) if area else vol.Optional(CONF_ROOM_AREA)
     return _schema(
         (
             vol.Required(CONF_ROOM_NAME, default=data.get(CONF_ROOM_NAME, "")),
             selector.TextSelector(),
+        ),
+        (
+            area_key,
+            selector.AreaSelector(),
         ),
         _entity(
             CONF_ROOM_TEMP_ENTITY,
@@ -535,7 +550,15 @@ class ThermOptOptionsFlow(OptionsFlow):
 class RoomSubentryFlow(ConfigSubentryFlow):
     """Add or reconfigure one heated room."""
 
+    _hints: dict[str, Any] | None = None
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        """Entry point: manual entry or discovery from an area."""
+        return self.async_show_menu(step_id="user", menu_options=["manual", "from_area"])
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
         if user_input is not None:
             errors: dict[str, str] = {}
             if not str(user_input.get(CONF_ROOM_NAME, "")).strip():
@@ -547,10 +570,30 @@ class RoomSubentryFlow(ConfigSubentryFlow):
                 user_input[CONF_ROOM_NAME] = str(user_input[CONF_ROOM_NAME]).strip()
                 return self.async_create_entry(title=user_input[CONF_ROOM_NAME], data=user_input)
             return self.async_show_form(
-                step_id="user", data_schema=room_schema(user_input), errors=errors
+                step_id="manual", data_schema=room_schema(user_input), errors=errors
             )
 
-        return self.async_show_form(step_id="user", data_schema=room_schema())
+        return self.async_show_form(step_id="manual", data_schema=room_schema(self._hints))
+
+    async def async_step_from_area(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Pre-fill the room form by scanning an area."""
+        if user_input is not None:
+            area_id = user_input.get(CONF_ROOM_AREA)
+            if not area_id:
+                return self.async_show_form(
+                    step_id="from_area",
+                    data_schema=vol.Schema({vol.Required(CONF_ROOM_AREA): selector.AreaSelector()}),
+                    errors={"base": "area_required"},
+                )
+            self._hints = await guess_room_entities(self.hass, str(area_id))
+            return await self.async_step_manual()
+
+        return self.async_show_form(
+            step_id="from_area",
+            data_schema=vol.Schema({vol.Required(CONF_ROOM_AREA): selector.AreaSelector()}),
+        )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None

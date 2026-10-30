@@ -50,6 +50,12 @@ async def async_get_config_entry_diagnostics(
         },
         "cycle": {
             "status": data.status if data else None,
+            "mode": data.mode if data else None,
+            "pilotage_actif": data.actuation_enabled if data else None,
+            "raison": data.actuation_reason if data else None,
+            "derniere_commande": data.last_command.to_dict()
+            if data and data.last_command
+            else None,
             "last_cycle": data.last_cycle.isoformat() if data and data.last_cycle else None,
             "next_cycle": data.next_cycle.isoformat() if data and data.next_cycle else None,
             "is_hc": data.is_hc if data else None,
@@ -95,6 +101,10 @@ def _room_snapshot(data: ThermOptData | None, subentry_id: str) -> dict[str, Any
     return {
         "t_air": snapshot.t_air,
         "order": snapshot.order.value if snapshot.order is not None else None,
+        "order_source": snapshot.order_source,
+        "requested_order": (
+            snapshot.requested_order.value if snapshot.requested_order is not None else None
+        ),
         "target_min": snapshot.target_min,
         "guard_floor": snapshot.guard_floor,
         "degraded": list(snapshot.degraded),

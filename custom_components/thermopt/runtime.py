@@ -26,7 +26,7 @@ from .const import (
     STORAGE_VERSION,
     VERSION,
 )
-from .coordinator import ThermOptCoordinator
+from .coordinator import LastCommand, ThermOptCoordinator
 from .core.orders import Order, order_from_z2m
 from .core.ring_buffer import RoomSeries
 from .perception.liveness import is_frozen
@@ -128,6 +128,7 @@ class ThermOptRuntime:
         self.config = SystemConfig.from_entry(entry)
         self.rooms: dict[str, RoomRuntime] = {}
         self.last_cycle: datetime | None = None
+        self.last_command: LastCommand = LastCommand()
         self.version: str = VERSION
         self.store: Store[dict] = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}")
         self.weather = WeatherProvider(hass, self.config.weather_entity)
@@ -140,6 +141,7 @@ class ThermOptRuntime:
         stored = await self.store.async_load() or {}
 
         self.weather.load(stored.get("weather"))
+        self.last_command = LastCommand.from_dict(stored.get("last_command"))
         self._build_rooms(stored.get("rooms", {}))
         self.last_cycle = _parse(stored.get("last_cycle"))
 
@@ -209,8 +211,25 @@ class ThermOptRuntime:
         return {
             "weather": self.weather.dump(),
             "last_cycle": self.last_cycle.isoformat() if self.last_cycle else None,
+            "last_command": self.last_command.to_dict(),
             "rooms": {sid: room.dump() for sid, room in self.rooms.items()},
         }
+
+    @property
+    def fallback_active(self) -> bool:
+        """True when the native fallback planning has taken over."""
+        entity_id = self.config.fallback_entity
+        state = self.hass.states.get(entity_id)
+        return state is not None and str(state.state).lower() == "on"
+
+    def async_record_command(
+        self, room: str, order: Order, result: str, source: str = "thermopt"
+    ) -> None:
+        """Remember the last order ThermOpt itself wrote."""
+        self.last_command = LastCommand(
+            at=dt_util.now(), room=room, order=order, result=result, source=source
+        )
+        self._schedule_save()
 
 
 async def _integration_version(hass: HomeAssistant) -> str:

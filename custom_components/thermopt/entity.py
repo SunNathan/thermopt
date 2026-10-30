@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from homeassistant.helpers import area_registry
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -35,14 +36,27 @@ def hub_device_info(runtime: ThermOptRuntime) -> DeviceInfo:
 
 
 def room_device_info(runtime: ThermOptRuntime, config: RoomConfig) -> DeviceInfo:
-    """One device per heated room."""
-    return DeviceInfo(
+    """One device per heated room, placed in the area the user picked."""
+    device = DeviceInfo(
         identifiers={(DOMAIN, f"{runtime.entry.entry_id}_{config.subentry_id}")},
         name=config.name,
         manufacturer=MANUFACTURER,
         model="Radiateur piloté",
         via_device=(DOMAIN, runtime.entry.entry_id),
     )
+    area_name = _area_name(runtime, config.area_id)
+    if area_name:
+        device["suggested_area"] = area_name
+    return device
+
+
+def _area_name(runtime: ThermOptRuntime, area_id: str | None) -> str | None:
+    """Resolve an area name: ``suggested_area`` expects a name, not an id."""
+    if not area_id:
+        return None
+    registry = area_registry.async_get(runtime.hass)
+    area = registry.async_get_area(area_id)
+    return area.name if area is not None else None
 
 
 class ThermOptEntity(CoordinatorEntity[ThermOptCoordinator]):

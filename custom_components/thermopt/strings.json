@@ -7,6 +7,7 @@
         "data": {
           "weather_entity": "Entité météo",
           "auto_entity": "Interrupteur auto/manuel",
+          "fallback_entity": "Helper de repli",
           "presence_entity": "Présence continue (télétravail)",
           "hc_binary_entity": "Signal HC réel (optionnel)",
           "hp_price": "Prix Heures Pleines",
@@ -57,10 +58,19 @@
       },
       "step": {
         "user": {
+          "title": "Ajouter une pièce",
+          "description": "Saisie manuelle, ou pré-remplissage en scannant les appareils d'une pièce Home Assistant.",
+          "menu_options": {
+            "manual": "Saisie manuelle",
+            "from_area": "Remplir depuis une pièce"
+          }
+        },
+        "manual": {
           "title": "ThermOpt — Pièce",
-          "description": "Renseigne les entités du module fil pilote NodOn et les capteurs de la pièce.",
+          "description": "Les entités peuvent se trouver dans n'importe quelle pièce : choisir une pièce ici ne sert qu'à pré-remplir et à ranger l'appareil ThermOpt au bon endroit.",
           "data": {
             "name": "Nom de la pièce",
+            "area_id": "Pièce Home Assistant",
             "temp_entity": "Capteur de température",
             "humidity_entity": "Capteur d'humidité",
             "fil_pilote_entity": "Entité fil pilote (select)",
@@ -72,10 +82,18 @@
             "volume": "Volume"
           }
         },
+        "from_area": {
+          "title": "ThermOpt — Depuis une pièce",
+          "description": "ThermOpt cherche le module fil pilote (select dont les options contiennent frost_protection), son relais, et les capteurs de la pièce. Tu pourras tout ajuster ensuite.",
+          "data": {
+            "area_id": "Pièce Home Assistant"
+          }
+        },
         "reconfigure": {
           "title": "ThermOpt — Modifier la pièce",
           "data": {
             "name": "Nom de la pièce",
+            "area_id": "Pièce Home Assistant",
             "temp_entity": "Capteur de température",
             "humidity_entity": "Capteur d'humidité",
             "fil_pilote_entity": "Entité fil pilote (select)",
@@ -90,7 +108,8 @@
       },
       "error": {
         "name_required": "Le nom de la pièce est obligatoire",
-        "actuator_required": "Sélectionne l'entité fil pilote de la pièce"
+        "actuator_required": "Sélectionne l'entité fil pilote de la pièce",
+        "area_required": "Choisis une pièce Home Assistant"
       }
     }
   },
@@ -102,6 +121,7 @@
         "data": {
           "weather_entity": "Entité météo",
           "auto_entity": "Interrupteur auto/manuel",
+          "fallback_entity": "Helper de repli",
           "presence_entity": "Présence continue (télétravail)",
           "hc_binary_entity": "Signal HC réel (optionnel)",
           "hp_price": "Prix Heures Pleines",
@@ -137,6 +157,20 @@
       "frost_too_high": "La consigne Hors-gel doit être au moins 5 °C sous la consigne Confort",
       "invalid_time": "Heure invalide, format attendu HH:MM",
       "duplicate_slot": "Deux créneaux ne peuvent pas démarrer à la même heure"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Statut",
+        "state": {
+          "observation": "Observation seule",
+          "pilotage": "Pilotage actif",
+          "repli": "Repli",
+          "manuel": "Manuel",
+          "degrade": "Dégradé"
+        }
+      }
     }
   }
 }

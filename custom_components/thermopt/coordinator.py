@@ -17,6 +17,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ACTUATION_IMPLEMENTED,
+    ACTUATION_REASON,
     CYCLE_INTERVAL,
     DEGRADED_ACTUATOR_UNAVAILABLE,
     DEGRADED_NO_ROOM,
@@ -25,6 +27,11 @@ from .const import (
     DEGRADED_TARIFF_MISMATCH,
     DEGRADED_WEATHER,
     DOMAIN,
+    MODE_DEGRADE,
+    MODE_MANUEL,
+    MODE_OBSERVATION,
+    MODE_PILOTAGE,
+    MODE_REPLI,
     STATE_COLLECTE,
     STATE_MANUAL,
 )
@@ -42,6 +49,38 @@ UNAVAILABLE = {"unavailable", "unknown", "none", ""}
 
 
 @dataclass(frozen=True, slots=True)
+class LastCommand:
+    """Last fil pilote order ThermOpt itself wrote (``result="aucune"`` before J2)."""
+
+    at: datetime | None = None
+    room: str | None = None
+    order: Order | None = None
+    result: str = "aucune"
+    source: str = "aucune"
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "at": self.at.isoformat() if self.at else None,
+            "room": self.room,
+            "order": self.order.value if self.order else None,
+            "result": self.result,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> LastCommand:
+        if not data:
+            return cls()
+        return cls(
+            at=_parse_dt(data.get("at")),
+            room=data.get("room") if isinstance(data.get("room"), str) else None,
+            order=Order(data["order"]) if data.get("order") in {o.value for o in Order} else None,
+            result=str(data.get("result") or "aucune"),
+            source=str(data.get("source") or "aucune"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RoomSnapshot:
     """Per-room view exposed to the entities."""
 
@@ -52,6 +91,8 @@ class RoomSnapshot:
     power: float | None = None
     energy: float | None = None
     order: Order | None = None
+    requested_order: Order | None = None
+    order_source: str = "aucune"
     target_min: float | None = None
     target_max: float | None = None
     guard_floor: float | None = None
@@ -64,6 +105,11 @@ class ThermOptData:
     """Coordinator payload."""
 
     status: str = STATE_COLLECTE
+    mode: str = MODE_OBSERVATION
+    internal_state: str = STATE_COLLECTE
+    actuation_enabled: bool = False
+    actuation_reason: str | None = ACTUATION_REASON
+    last_command: LastCommand | None = None
     last_cycle: datetime | None = None
     next_cycle: datetime | None = None
     is_hc: bool = False
@@ -129,10 +175,18 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             )
             degraded.update(rooms[room.config.subentry_id].degraded)
 
-        status = self._status(degraded)
+        auto = self._auto_enabled()
+        internal_state = self._status(degraded)
+        last_command = runtime.last_command
+        actuation_enabled = ACTUATION_IMPLEMENTED and auto and not degraded
 
         return ThermOptData(
-            status=status,
+            status=internal_state,
+            mode=self._mode(auto=auto, degraded=degraded),
+            internal_state=internal_state,
+            actuation_enabled=actuation_enabled,
+            actuation_reason=None if actuation_enabled else self._actuation_reason(auto, degraded),
+            last_command=last_command,
             last_cycle=now,
             next_cycle=now + CYCLE_INTERVAL,
             is_hc=hc_now,
@@ -173,6 +227,8 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             power=room.power,
             energy=room.energy,
             order=room.order,
+            requested_order=self._requested_order(room),
+            order_source=self._order_source(room, now),
             target_min=round(t_min, 2),
             target_max=round(t_max, 2),
             guard_floor=guard,
@@ -228,9 +284,68 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             return STATE_MANUAL
         return STATE_COLLECTE
 
+    def _mode(self, *, auto: bool, degraded: set[str]) -> str:
+        """Readable mode shown by ``sensor.thermopt_statut``."""
+        if not auto:
+            return MODE_MANUEL
+        if self.runtime.fallback_active:
+            return MODE_REPLI
+        if not ACTUATION_IMPLEMENTED:
+            return MODE_OBSERVATION
+        if degraded:
+            return MODE_DEGRADE
+        return MODE_PILOTAGE
+
+    def _actuation_reason(self, auto: bool, degraded: set[str]) -> str:
+        """Why no order is being written, in plain language."""
+        if not auto:
+            return "Mode manuel : ThermOpt n'écrit aucun ordre"
+        if self.runtime.fallback_active:
+            return "Repli actif : le planning natif pilote le chauffage"
+        if not ACTUATION_IMPLEMENTED:
+            return ACTUATION_REASON
+        if degraded:
+            return f"Situation dégradée : {', '.join(sorted(degraded))}"
+        return "Pilotage actif"
+
+    def _requested_order(self, room: RoomRuntime) -> Order | None:
+        """Order ThermOpt wants, as opposed to what the module actually holds."""
+        last = self.runtime.last_command
+        if last is None or last.room != room.config.subentry_id:
+            return None
+        return last.order
+
+    def _order_source(self, room: RoomRuntime, now: datetime) -> str:
+        """Who last changed the module: ThermOpt, a human, or the fallback."""
+        if self.runtime.fallback_active:
+            return "repli"
+
+        last = self.runtime.last_command
+        if (
+            last is not None
+            and last.room == room.config.subentry_id
+            and last.at is not None
+            and (now - last.at).total_seconds() < 600
+        ):
+            return "thermopt"
+
+        if room.driver is None or not room.driver.available:
+            return "inconnue"
+
+        if room.order is None:
+            return "inconnue"
+
+        return "manuel"
+
     def _notify_once(self, notification_id: str, title: str, message: str) -> None:
         from homeassistant.components import persistent_notification
 
         persistent_notification.async_create(
             self.hass, message, title=title, notification_id=notification_id
         )
+
+
+def _parse_dt(raw: object) -> datetime | None:
+    if not isinstance(raw, str):
+        return None
+    return dt_util.parse_datetime(raw)

@@ -28,6 +28,13 @@ class SystemBinaryDescription(BinarySensorEntityDescription):
 
 SYSTEM_BINARY: tuple[SystemBinaryDescription, ...] = (
     SystemBinaryDescription(
+        key="pilotage_actif",
+        name="Pilotage actif",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        icon="mdi:radiator",
+        value_fn=lambda data: data.actuation_enabled,
+    ),
+    SystemBinaryDescription(
         key="degraded",
         name="Mode dégradé",
         device_class=BinarySensorDeviceClass.PROBLEM,
@@ -75,7 +82,21 @@ class ThermOptSystemBinary(ThermOptEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         data = self.coordinator.data
-        if data is None or self.entity_description.key != "degraded":
+        if data is None:
+            return None
+
+        if self.entity_description.key == "pilotage_actif":
+            command = data.last_command
+            return {
+                "raison": data.actuation_reason,
+                "mode": data.mode,
+                "derniere_commande": (command.at.isoformat() if command and command.at else None),
+                "pieces_actives": [
+                    snapshot.name for snapshot in data.rooms.values() if not snapshot.degraded
+                ],
+            }
+
+        if self.entity_description.key != "degraded":
             return None
         return {
             "reasons": list(data.degraded),

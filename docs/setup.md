@@ -40,6 +40,7 @@
 |---|---|
 | Entité météo | votre intégration météo |
 | Interrupteur auto/manuel | `input_boolean.thermopt_auto` (à créer, voir `ha_config/helpers.md`) |
+| Helper de repli | `input_boolean.thermopt_repli` (par défaut) |
 | Présence continue | calendrier ou booléen de télétravail (optionnel) |
 | Signal HC réel | `binary_sensor` Linky (optionnel, sert au diagnostic) |
 | Prix HP / HC | tarif en vigueur (€/kWh) |
@@ -58,9 +59,18 @@ avec l'échelle d'ordres choisie.
 
 **Étape 3 — Pièces** (une sous-entrée par pièce, ajoutables ensuite à tout moment)
 
+Deux façons d'ajouter une pièce, au choix :
+
+1. **Remplir depuis une pièce** — tu choisis une pièce Home Assistant, ThermOpt
+   scanne ses appareils et propose le module fil pilote (le `select` dont les
+   options contiennent `frost_protection`), son relais, la puissance, l'énergie
+   et les capteurs. Tout reste modifiable avant validation.
+2. **Saisie manuelle** — si tes entités sont dispersées ou nommées autrement.
+
 | Champ | Exemple |
 |---|---|
 | Nom | Salon |
+| Pièce Home Assistant | *facultatif* — sert à ranger l'appareil ThermOpt dans la bonne pièce, et à pré-remplir |
 | Capteur de température | `sensor.salon_temperature` |
 | Capteur d'humidité | `sensor.salon_humidity` |
 | Entité fil pilote (select) | `select.salon_pilot_wire_mode` |
@@ -69,6 +79,12 @@ avec l'échelle d'ordres choisie.
 | Énergie cumulée | `sensor.salon_energy` |
 | Puissance nominale | 1500 W |
 | Surface / volume | 20 m² / 50 m³ (prior du futur modèle) |
+
+> **Les entités peuvent être dans n'importe quelle pièce.** Le champ « Pièce »
+> ne filtre rien : il sert à pré-remplir le formulaire et à rattacher l'appareil
+> créé par ThermOpt à la bonne pièce. Un thermomètre dans une autre pièce, ou un
+> module en « Technique », fonctionne exactement pareil.
+
 
 ## 5. Sécurité indépendante (obligatoire)
 

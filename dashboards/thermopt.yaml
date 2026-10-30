@@ -1,0 +1,103 @@
+# ThermOpt — vue Lovelace prête à coller
+#
+# Utilisation : Tableau de bord -> Modifier -> ⋮ -> Éditeur de configuration brute,
+# puis ajouter ce bloc dans `views:` (en adaptant les noms de pièces).
+#
+# Aucune carte custom n'est nécessaire.
+views:
+  - title: ThermOpt
+    path: thermopt
+    icon: mdi:home-thermometer
+    cards:
+      # --- Réponse à la question « est-ce que ça pilote mon chauffage ? » ---
+      - type: markdown
+        content: >-
+          {% set actif = is_state('binary_sensor.thermopt_pilotage_actif', 'on') %}
+          {% if actif %}
+          ## 🟢 Pilotage actif
+
+          ThermOpt applique ses ordres aux radiateurs.
+          {% else %}
+          ## ⚪ Pilotage inactif
+
+          **Aucun ordre n'est envoyé aux radiateurs.**
+
+          {{ state_attr('binary_sensor.thermopt_pilotage_actif', 'raison') }}
+          {% endif %}
+
+          Mode : **{{ states('sensor.thermopt_statut') }}** ·
+          Dernière commande : **{{ states('sensor.thermopt_derniere_commande') }}**
+
+      - type: glance
+        title: Superviseur
+        columns: 3
+        entities:
+          - entity: binary_sensor.thermopt_pilotage_actif
+            name: Pilotage
+          - entity: sensor.thermopt_statut
+            name: Mode
+          - entity: binary_sensor.thermopt_mode_degrade
+            name: Santé
+          - entity: binary_sensor.thermopt_heures_creuses
+            name: Tarif
+          - entity: sensor.thermopt_prix_actuel
+            name: Prix
+          - entity: sensor.thermopt_dernier_cycle
+            name: Cycle
+
+      # --- Une carte par pièce : dupliquer et adapter les préfixes ---
+      - type: entities
+        title: Salon
+        show_header_toggle: false
+        entities:
+          - entity: sensor.salon_temperature_mesuree
+            name: Température
+          - entity: sensor.salon_consigne_minimale
+            name: Consigne minimale
+          - entity: sensor.salon_consigne_maximale
+            name: Consigne maximale
+          - entity: sensor.salon_ordre_demande
+            name: Ordre demandé
+          - entity: sensor.salon_ordre_applique
+            name: Ordre appliqué
+          - entity: sensor.salon_puissance
+            name: Puissance
+          - entity: sensor.salon_energie
+            name: Énergie
+          - entity: sensor.salon_creneau
+            name: Créneau
+
+      - type: entities
+        title: Chambre
+        show_header_toggle: false
+        entities:
+          - entity: sensor.chambre_temperature_mesuree
+            name: Température
+          - entity: sensor.chambre_consigne_minimale
+            name: Consigne minimale
+          - entity: sensor.chambre_consigne_maximale
+            name: Consigne maximale
+          - entity: sensor.chambre_ordre_demande
+            name: Ordre demandé
+          - entity: sensor.chambre_ordre_applique
+            name: Ordre appliqué
+          - entity: sensor.chambre_puissance
+            name: Puissance
+          - entity: sensor.chambre_energie
+            name: Énergie
+          - entity: sensor.chambre_creneau
+            name: Créneau
+
+      # --- N'apparaît que s'il y a un problème ---
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.thermopt_mode_degrade
+            state: "on"
+        card:
+          type: markdown
+          content: >-
+            ## ⚠️ Situation dégradée
+
+            {{ state_attr('binary_sensor.thermopt_mode_degrade', 'reasons') | join(', ') }}
+
+            Source météo : {{ state_attr('binary_sensor.thermopt_mode_degrade', 'forecast_source') }}

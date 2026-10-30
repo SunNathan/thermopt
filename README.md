@@ -57,13 +57,31 @@ dans les options de l'intégration.
 
 ## Entités créées
 
-- `sensor.thermopt_statut` — état du superviseur (collecte, manuel, repli…)
+**Comprendre l'état en un coup d'œil :**
+
+- `binary_sensor.thermopt_pilotage_actif` — **la réponse à « est-ce que ça
+  pilote mon chauffage ? »**. `off` tant que la boucle fermée n'existe pas, avec
+  un attribut `raison` qui explique pourquoi. `on` quand ThermOpt applique
+  réellement ses ordres.
+- `sensor.thermopt_statut` — mode lisible : `observation`, `pilotage`, `repli`,
+  `manuel` ou `degrade` (états traduits).
+- `sensor.thermopt_derniere_commande` — dernière commande écrite par ThermOpt
+  (horodatage), avec `piece`, `ordre`, `resultat` et `source` en attributs.
 - `sensor.thermopt_dernier_cycle` / `prochain_cycle` — battement de cœur (base du watchdog)
 - `sensor.thermopt_prix_actuel`, `sensor.thermopt_temperature_exterieure`
 - `binary_sensor.thermopt_mode_degrade`, `binary_sensor.thermopt_heures_creuses`
-- par pièce : température, humidité, consignes min/max, créneau, ordre fil
-  pilote, puissance, énergie, problème, et un switch de supervision
-- deux boutons de diagnostic (forcer un cycle, dumper l'état)
+
+**Par pièce**, l'ordre demandé et l'ordre appliqué sont séparés :
+
+- `sensor.<piece>_ordre_demande` — ce que ThermOpt veut appliquer
+- `sensor.<piece>_ordre_applique` — ce que le module contient réellement, avec
+  l'attribut `source` : `thermopt`, `manuel`, `repli` ou `inconnue`
+
+Plus : température, humidité, consignes min/max, créneau, puissance, énergie,
+problème, et un switch de supervision, ainsi que deux boutons de diagnostic.
+
+Une vue Lovelace prête à coller est fournie dans
+[`dashboards/thermopt.yaml`](dashboards/thermopt.yaml).
 
 ## Développement
 

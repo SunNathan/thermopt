@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from .const import (
     CONF_AUTO_ENTITY,
     CONF_COMFORT_SETPOINT,
+    CONF_FALLBACK_ENTITY,
     CONF_FROST_SETPOINT,
     CONF_HC_BINARY_ENTITY,
     CONF_HC_PRICE,
@@ -17,6 +18,7 @@ from .const import (
     CONF_HIGH_MARGIN,
     CONF_HP_PRICE,
     CONF_PRESENCE_ENTITY,
+    CONF_ROOM_AREA,
     CONF_ROOM_ENERGY_ENTITY,
     CONF_ROOM_FIL_PILOTE_ENTITY,
     CONF_ROOM_HUMIDITY_ENTITY,
@@ -43,6 +45,7 @@ from .const import (
     CONF_TOLERANCE,
     CONF_WEATHER_ENTITY,
     DEFAULT_COMFORT_SETPOINT,
+    DEFAULT_FALLBACK_ENTITY,
     DEFAULT_FROST_SETPOINT,
     DEFAULT_HC_PRICE,
     DEFAULT_HC_WINDOWS,
@@ -82,6 +85,7 @@ class SystemConfig:
     hc_binary_entity: str | None = None
     presence_entity: str | None = None
     auto_entity: str | None = None
+    fallback_entity: str = DEFAULT_FALLBACK_ENTITY
     hp_price: float = DEFAULT_HP_PRICE
     hc_price: float = DEFAULT_HC_PRICE
     ladder: Ladder = field(default_factory=Ladder)
@@ -140,6 +144,7 @@ class SystemConfig:
             hc_binary_entity=data.get(CONF_HC_BINARY_ENTITY) or None,
             presence_entity=data.get(CONF_PRESENCE_ENTITY) or None,
             auto_entity=data.get(CONF_AUTO_ENTITY) or None,
+            fallback_entity=str(data.get(CONF_FALLBACK_ENTITY) or DEFAULT_FALLBACK_ENTITY),
             hp_price=_as_float(data.get(CONF_HP_PRICE), DEFAULT_HP_PRICE),
             hc_price=_as_float(data.get(CONF_HC_PRICE), DEFAULT_HC_PRICE),
             ladder=Ladder(
@@ -157,6 +162,7 @@ class RoomConfig:
 
     subentry_id: str
     name: str
+    area_id: str | None = None
     temp_entity: str | None = None
     humidity_entity: str | None = None
     fil_pilote_entity: str | None = None
@@ -178,6 +184,7 @@ class RoomConfig:
         return cls(
             subentry_id=subentry.subentry_id,
             name=subentry.title or data.get(CONF_ROOM_NAME, "Room"),
+            area_id=data.get(CONF_ROOM_AREA) or None,
             temp_entity=data.get(CONF_ROOM_TEMP_ENTITY) or None,
             humidity_entity=data.get(CONF_ROOM_HUMIDITY_ENTITY) or None,
             fil_pilote_entity=data.get(CONF_ROOM_FIL_PILOTE_ENTITY) or None,

@@ -4,6 +4,33 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le
 versionnage sémantique. La version de `custom_components/thermopt/manifest.json`
 doit toujours correspondre au tag publié.
 
+## [Unreleased]
+
+### Ajouté
+
+- `binary_sensor.thermopt_pilotage_actif` : dit explicitement si ThermOpt
+  pilote le chauffage, avec la raison en attribut.
+- `sensor.thermopt_statut` devient un capteur énuméré lisible
+  (`observation`, `pilotage`, `repli`, `manuel`, `degrade`), traduit en FR/EN.
+- `sensor.thermopt_derniere_commande` : horodatage de la dernière commande
+  écrite par ThermOpt, avec pièce / ordre / résultat / source.
+- Par pièce, l'ordre **demandé** et l'ordre **appliqué** sont désormais
+  distincts, avec la source (`thermopt`, `manuel`, `repli`, `inconnue`).
+- Champ « Pièce Home Assistant » par pièce : l'appareil ThermOpt est rattaché à
+  la bonne zone (`suggested_area`), sans déplacer les appareils existants.
+- Flux « Remplir depuis une pièce » : pré-remplissage des entités en scannant
+  une zone (module fil pilote détecté par son option `frost_protection`,
+  relais, puissance, énergie, capteurs).
+- Vue Lovelace prête à coller : `dashboards/thermopt.yaml`.
+- `helpers.md` et `setup.md` précisent que les entités peuvent être dans
+  n'importe quelle pièce.
+
+### Modifié
+
+- `sensor.<piece>_ordre_fil_pilote` devient `sensor.<piece>_ordre_applique`
+  (renommage, aucune release publiée à ce stade).
+- Le helper de repli est configurable (défaut `input_boolean.thermopt_repli`).
+
 ## [0.1.0] — 2026-10-30
 
 Premier jalon : squelette installable, perception et repli. **Aucun ordre fil

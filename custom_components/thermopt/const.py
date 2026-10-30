@@ -35,6 +35,7 @@ CONF_WEATHER_ENTITY = "weather_entity"
 CONF_HC_BINARY_ENTITY = "hc_binary_entity"
 CONF_PRESENCE_ENTITY = "presence_entity"
 CONF_AUTO_ENTITY = "auto_entity"
+CONF_FALLBACK_ENTITY = "fallback_entity"
 CONF_HP_PRICE = "hp_price"
 CONF_HC_PRICE = "hc_price"
 CONF_HC_WINDOWS = "hc_windows"
@@ -63,6 +64,7 @@ CONF_T_MIN_EVENING_WEEKEND = "t_min_evening_weekend"
 SUBENTRY_ROOM = "room"
 
 CONF_ROOM_NAME = "name"
+CONF_ROOM_AREA = "area_id"
 CONF_ROOM_TEMP_ENTITY = "temp_entity"
 CONF_ROOM_HUMIDITY_ENTITY = "humidity_entity"
 CONF_ROOM_FIL_PILOTE_ENTITY = "fil_pilote_entity"
@@ -80,6 +82,7 @@ DEFAULT_HC_WINDOWS = "22:00-06:00, 12:00-14:00"
 DEFAULT_COMFORT_SETPOINT = 20.5
 DEFAULT_FROST_SETPOINT = 7.0
 DEFAULT_NOMINAL_POWER = 1500.0
+DEFAULT_FALLBACK_ENTITY = "input_boolean.thermopt_repli"
 
 # --- Supervisor states (§ 7.4) ----------------------------------------------
 STATE_INIT = "init"
@@ -90,15 +93,28 @@ STATE_CLOSED_LOOP = "boucle_fermee"
 STATE_FALLBACK = "repli"
 STATE_MANUAL = "manuel"
 
-SUPERVISOR_STATES = [
-    STATE_INIT,
-    STATE_COLLECTE,
-    STATE_EXCITATION,
-    STATE_SHADOW,
-    STATE_CLOSED_LOOP,
-    STATE_FALLBACK,
-    STATE_MANUAL,
+# --- Public modes exposed by ``sensor.thermopt_statut`` ----------------------
+# Readable, translated, stable: they are what the user and automations see.
+MODE_OBSERVATION = "observation"
+MODE_PILOTAGE = "pilotage"
+MODE_REPLI = "repli"
+MODE_MANUEL = "manuel"
+MODE_DEGRADE = "degrade"
+
+SUPERVISOR_MODES = [
+    MODE_OBSERVATION,
+    MODE_PILOTAGE,
+    MODE_REPLI,
+    MODE_MANUEL,
+    MODE_DEGRADE,
 ]
+
+# --- Actuation gate ----------------------------------------------------------
+# False until the closed loop exists (milestone 2: RC model + MPC).
+# While False, ThermOpt never writes a fil pilote order and says so explicitly
+# through ``binary_sensor.thermopt_pilotage_actif``.
+ACTUATION_IMPLEMENTED = False
+ACTUATION_REASON = "Pilotage non implémenté : aucun ordre n'est envoyé au radiateur (jalon 2)"
 
 # --- Degradation reasons -----------------------------------------------------
 DEGRADED_WEATHER = "weather_unavailable"

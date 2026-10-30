@@ -7,6 +7,7 @@
         "data": {
           "weather_entity": "Weather entity",
           "auto_entity": "Auto/manual switch",
+          "fallback_entity": "Fallback helper",
           "presence_entity": "Continuous presence (telework)",
           "hc_binary_entity": "Real off-peak signal (optional)",
           "hp_price": "Peak price",
@@ -57,10 +58,19 @@
       },
       "step": {
         "user": {
+          "title": "Add a room",
+          "description": "Enter the entities manually, or pre-fill them by scanning the devices of a Home Assistant area.",
+          "menu_options": {
+            "manual": "Manual entry",
+            "from_area": "Fill from an area"
+          }
+        },
+        "manual": {
           "title": "ThermOpt — Room",
-          "description": "Pick the fil pilote module entities and the room sensors.",
+          "description": "Entities may live in any area: picking an area only pre-fills the form and files the ThermOpt device in the right place.",
           "data": {
             "name": "Room name",
+            "area_id": "Home Assistant area",
             "temp_entity": "Temperature sensor",
             "humidity_entity": "Humidity sensor",
             "fil_pilote_entity": "Fil pilote entity (select)",
@@ -72,10 +82,18 @@
             "volume": "Volume"
           }
         },
+        "from_area": {
+          "title": "ThermOpt — From an area",
+          "description": "ThermOpt looks for the pilot wire module (a select whose options include frost_protection), its relay, and the room sensors. Everything stays editable.",
+          "data": {
+            "area_id": "Home Assistant area"
+          }
+        },
         "reconfigure": {
           "title": "ThermOpt — Edit room",
           "data": {
             "name": "Room name",
+            "area_id": "Home Assistant area",
             "temp_entity": "Temperature sensor",
             "humidity_entity": "Humidity sensor",
             "fil_pilote_entity": "Fil pilote entity (select)",
@@ -90,7 +108,8 @@
       },
       "error": {
         "name_required": "Room name is required",
-        "actuator_required": "Select the room's fil pilote entity"
+        "actuator_required": "Select the room's fil pilote entity",
+        "area_required": "Pick a Home Assistant area"
       }
     }
   },
@@ -102,6 +121,7 @@
         "data": {
           "weather_entity": "Weather entity",
           "auto_entity": "Auto/manual switch",
+          "fallback_entity": "Fallback helper",
           "presence_entity": "Continuous presence (telework)",
           "hc_binary_entity": "Real off-peak signal (optional)",
           "hp_price": "Peak price",
@@ -137,6 +157,20 @@
       "frost_too_high": "Frost setpoint must be at least 5 °C below the Comfort setpoint",
       "invalid_time": "Invalid time, expected HH:MM",
       "duplicate_slot": "Two slots cannot start at the same time"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "observation": "Observation only",
+          "pilotage": "Actively controlling",
+          "repli": "Fallback",
+          "manuel": "Manual",
+          "degrade": "Degraded"
+        }
+      }
     }
   }
 }

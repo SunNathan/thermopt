@@ -17,6 +17,7 @@ from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTem
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import SUPERVISOR_MODES
 from .coordinator import RoomSnapshot, ThermOptData
 from .core.orders import LABELS_FR
 from .entity import ThermOptEntity, ThermOptRoomEntity, description_name, hub_device_info
@@ -44,8 +45,18 @@ SYSTEM_SENSORS: tuple[SystemSensorDescription, ...] = (
     SystemSensorDescription(
         key="status",
         name="Statut",
+        translation_key="status",
+        device_class=SensorDeviceClass.ENUM,
+        options=SUPERVISOR_MODES,
         icon="mdi:state-machine",
-        value_fn=lambda data: data.status,
+        value_fn=lambda data: data.mode,
+    ),
+    SystemSensorDescription(
+        key="last_command",
+        name="Dernière commande",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:send-clock",
+        value_fn=lambda data: data.last_command.at if data.last_command else None,
     ),
     SystemSensorDescription(
         key="last_cycle",
@@ -121,9 +132,15 @@ ROOM_SENSORS: tuple[RoomSensorDescription, ...] = (
         value_fn=lambda room: room.slot,
     ),
     RoomSensorDescription(
-        key="order",
-        name="Ordre fil pilote",
+        key="requested_order",
+        name="Ordre demandé",
         icon="mdi:radiator",
+        value_fn=lambda room: room.requested_order.value if room.requested_order else None,
+    ),
+    RoomSensorDescription(
+        key="applied_order",
+        name="Ordre appliqué",
+        icon="mdi:radiator-disabled",
         value_fn=lambda room: room.order.value if room.order else None,
     ),
     RoomSensorDescription(
@@ -170,6 +187,8 @@ class ThermOptSystemSensor(ThermOptEntity, SensorEntity):
         super().__init__(runtime, description.key)
         self.entity_description = description
         self._attr_name = description_name(description)
+        if description.translation_key:
+            self._attr_translation_key = description.translation_key
         self._attr_device_info = hub_device_info(runtime)
 
     @property
@@ -182,9 +201,29 @@ class ThermOptSystemSensor(ThermOptEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         data = self.coordinator.data
-        if data is None or self.entity_description.key != "status":
+        if data is None:
             return None
-        return {"degraded": list(data.degraded)}
+
+        if self.entity_description.key == "status":
+            return {
+                "etat_interne": data.internal_state,
+                "pilotage_actif": data.actuation_enabled,
+                "degraded": list(data.degraded),
+            }
+
+        if self.entity_description.key == "last_command":
+            command = data.last_command
+            if command is None:
+                return {"resultat": "aucune"}
+            return {
+                "piece": command.room,
+                "ordre": command.order.value if command.order else None,
+                "libelle": LABELS_FR.get(command.order) if command.order else None,
+                "resultat": command.result,
+                "source": command.source,
+            }
+
+        return None
 
 
 class ThermOptRoomSensor(ThermOptRoomEntity, SensorEntity):
@@ -214,9 +253,20 @@ class ThermOptRoomSensor(ThermOptRoomEntity, SensorEntity):
         room = self.room
         if room is None:
             return None
-        if self.entity_description.key != "order":
-            return None
-        return {
-            "label": LABELS_FR.get(room.order) if room.order else None,
-            "degraded": list(room.degraded),
-        }
+
+        if self.entity_description.key == "applied_order":
+            return {
+                "libelle": LABELS_FR.get(room.order) if room.order else None,
+                "source": room.order_source,
+                "degraded": list(room.degraded),
+            }
+
+        if self.entity_description.key == "requested_order":
+            return {
+                "libelle": LABELS_FR.get(room.requested_order) if room.requested_order else None,
+                "pilotage_actif": self.coordinator.data.actuation_enabled
+                if self.coordinator.data
+                else False,
+            }
+
+        return None

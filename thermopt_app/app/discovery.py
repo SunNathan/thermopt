@@ -149,7 +149,7 @@ SYSTEM_ATTRIBUTES = {
     "degraded": f"{BASE_TOPIC}/degraded/attributes",
 }
 
-ROOM_KEYS = ("temperature", "target_min", "safety", "applied_order", "power")
+ROOM_KEYS = ("temperature", "target_min", "safety", "applied_order", "power", "plan_cost")
 
 
 def room_topic(room_id: str, key: str) -> str:
@@ -295,6 +295,38 @@ def room_entities(room_id: str, name: str, version: str) -> list[tuple[str, str,
                 device=device,
                 icon="mdi:radiator",
                 attributes_topic=room_attributes_topic(room_id, "applied_order"),
+            ),
+        )
+    )
+
+    entities.append(
+        (
+            "sensor",
+            f"{room_id}_plan_cost",
+            sensor_config(
+                name="Coût prévu 24 h",
+                unique_id=f"{unique}_plan_cost",
+                object_id=f"thermopt_{slug}_cout_24h",
+                state_topic=room_topic(room_id, "plan_cost"),
+                device=device,
+                unit="€",
+                icon="mdi:currency-eur",
+                state_class="measurement",
+            ),
+        )
+    )
+
+    entities.append(
+        (
+            "sensor",
+            f"{room_id}_next_action",
+            sensor_config(
+                name="Prochaine action",
+                unique_id=f"{unique}_next_action",
+                object_id=f"thermopt_{slug}_prochaine_action",
+                state_topic=room_topic(room_id, "next_action"),
+                device=device,
+                icon="mdi:radiator",
             ),
         )
     )

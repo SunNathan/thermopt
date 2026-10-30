@@ -51,9 +51,9 @@ L'app publie ses entités via MQTT discovery (le broker Mosquitto de
 Zigbee2MQTT convient, les identifiants sont fournis par le Supervisor) et ses
 mises à jour passent par le bouton **Mettre à jour** de l'App store.
 
-État actuel : **phase B+C** — configuration complète, perception, garde-fous,
-historique persistant et identification du modèle thermique. L'optimiseur MPC
-arrive ensuite.
+État actuel : **phase B+C+D+E** — configuration, perception, garde-fous,
+historique persistant, identification du modèle et optimiseur MPC en
+observation.
 
 ### Intégration (historique)
 

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if not optimizer %}
+<div class="banner info">
+  <strong>Optimisation en observation.</strong>
+  Le plan est calculé et publié, mais aucun ordre n'est appliqué. Active-la dans
+  <a href="config">Configuration</a> une fois que tu as comparé prévu et réel.
+</div>
+{% else %}
+<div class="banner ok">
+  <strong>Optimisation active.</strong> Les garde-fous restent prioritaires : s'ils
+  forcent un ordre, le plan attend le cycle suivant.
+</div>
+{% endif %}
+
+{% for row in rows %}
+<fieldset>
+  <legend>{{ row.name }}</legend>
+
+  {% if not row.plan %}
+  <div class="banner info">
+    Aucun plan : il faut un modèle identifié pour cette pièce
+    (<a href="history">onglet Historique</a>).
+  </div>
+  {% else %}
+  {% set plan = row.plan %}
+  <div class="cards" style="margin-bottom:14px">
+    <div class="card">
+      <h2>Coût prévu 24 h</h2>
+      <div class="value">{{ "%.2f" | format(plan.cost) }} €</div>
+      <div class="muted">pénalité confort : {{ "%.2f" | format(plan.penalty) }}</div>
+    </div>
+    <div class="card">
+      <h2>Changements d'ordre</h2>
+      <div class="value">{{ plan.changes }}</div>
+      <div class="muted">limite : un par 30 min</div>
+    </div>
+    <div class="card">
+      <h2>Température minimale</h2>
+      <div class="value {{ 'ok' if plan.feasible else 'ko' }}">{{ plan.min_temp }} °C</div>
+      <div class="muted">{{ "plan faisable" if plan.feasible else "sous le hors-gel" }}</div>
+    </div>
+    <div class="card">
+      <h2>Prochaine action</h2>
+      <div class="value">{{ labels.get(plan.next_order.value, plan.next_order.value) if plan.next_order else "—" }}</div>
+      <div class="muted">{{ plan.evaluations }} simulations</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Heure</th><th>Ordre</th><th>Température prévue</th><th>Prix</th><th>Puissance</th><th>Coût</th></tr>
+    </thead>
+    <tbody>
+      {% for step in row.hourly %}
+      <tr>
+        <td>{{ step.moment.strftime("%H:%M") }}</td>
+        <td>{{ labels.get(step.order.value, step.order.value) }}</td>
+        <td>{{ step.t_pred }} °C</td>
+        <td>{{ "%.4f" | format(step.price) }} €</td>
+        <td>{{ step.power }} W</td>
+        <td>{{ "%.3f" | format(step.cost) }} €</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</fieldset>
+{% endfor %}
+
+{% if not rows %}
+<div class="banner info">Aucune pièce configurée.</div>
+{% endif %}
+
+<div class="muted" style="margin-top:12px">
+  Puissance estimée d'un ordre : <code>P = P_max × clamp((consigne(ordre) − T) / 0,5 K, 0, 1)</code>.
+  Le plan est recalculé à chaque cycle, seule la première action est appliquée.
+</div>
+
+{% endblock %}

@@ -6,6 +6,24 @@ doit toujours correspondre au tag publié.
 
 ## [Unreleased]
 
+### Ajouté
+
+- **Phase E : optimiseur MPC.**
+  - plan de 24 h au pas de 15 min, minimisant `prix × puissance + λ × écart²`
+    sous contraintes (un changement par 30 min, jamais sous 7 °C) ;
+  - puissance par ordre modélisée par saturation sur la consigne de l'ordre ;
+  - plan glouton à horizon 2 h puis hill-climbing, budget 1 000 simulations ;
+  - **observation par défaut** : le plan est publié, rien n'est appliqué tant
+    que l'option n'est pas cochée ;
+  - onglet **Plan** : coût 24 h, changements, température minimale, prochaine
+    action et tableau horaire ;
+  - `sensor.thermopt_<piece>_cout_24h` et `_prochaine_action` ;
+  - verrou : aucun plan sans modèle identifié.
+
+### Modifié
+
+- Version portée à **0.5.0** (intégration et app).
+
 ### Corrigé
 
 - **Faux positif « Deux superviseurs détectés »** : la détection cherchait

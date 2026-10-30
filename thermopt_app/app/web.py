@@ -289,6 +289,27 @@ def create_app(runtime: WebRuntime) -> web.Application:
             runtime.loop.apply_config(runtime.config)
         raise web.HTTPFound(REDIRECT_HOME)
 
+    async def plan_page(request: web.Request) -> web.Response:
+        _guard(request)
+        rows: list[dict[str, Any]] = []
+        loop = runtime.loop
+        for room in runtime.config.rooms:
+            plan = loop.rooms[room.id].plan if loop and room.id in loop.rooms else None
+            rows.append(
+                {
+                    "name": room.name,
+                    "plan": plan,
+                    "hourly": plan.hourly() if plan else [],
+                }
+            )
+        return render(
+            "plan.html",
+            active="plan",
+            rows=rows,
+            optimizer=runtime.config.optimizer_active,
+            labels={order.value: label for order, label in LABELS_FR.items()},
+        )
+
     async def _history_rows() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         if runtime.history is None:
@@ -384,6 +405,7 @@ def create_app(runtime: WebRuntime) -> web.Application:
     app.router.add_post("/config", config_save)
     app.router.add_post("/active", toggle_active)
     app.router.add_post("/ack", acknowledge)
+    app.router.add_get("/plan", plan_page)
     app.router.add_get("/history", history_page)
     app.router.add_post("/history/fit", history_fit)
     app.router.add_get("/history/export.csv", history_export)
@@ -441,6 +463,7 @@ def _apply_form(base: AppConfig, form, rooms: tuple[RoomConfig, ...]) -> AppConf
         comfort_setpoint=number("comfort_setpoint", base.comfort_setpoint),
         frost_setpoint=number("frost_setpoint", base.frost_setpoint),
         active=form.get("active") == "on",
+        optimizer_active=form.get("optimizer_active") == "on",
         starts=starts,
         weekday=weekday,
         weekend=weekend,

@@ -129,6 +129,10 @@
           <input type="checkbox" name="active" {{ "checked" if config.active }}>
           Écriture autorisée (sinon observation)
         </label>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--fg);margin-top:8px">
+          <input type="checkbox" name="optimizer_active" {{ "checked" if config.optimizer_active }}>
+          Optimisation active (MPC)
+        </label>
       </div>
     </div>
   </fieldset>

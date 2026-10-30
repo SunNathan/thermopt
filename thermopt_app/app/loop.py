@@ -34,6 +34,7 @@ from .config import AppConfig, RoomConfig
 from .ha import HaClient
 from .history import HistoryStore
 from .model import ModelParameters, predict
+from .mpc import STEPS, Plan, build_plan
 from .publish import Publisher, RoomState, Snapshot
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class RoomRuntime:
     safety_reason: str = ""
     target_min: float | None = None
     recent: list[dict] = field(default_factory=list)
+    plan: Plan | None = None
 
     @property
     def id(self) -> str:
@@ -229,14 +231,25 @@ class SupervisionLoop:
         room.target_min = round(t_min, 1)
 
         if active:
-            await self._apply(room, decision, now)
+            wrote = await self._apply(room, decision, now)
         else:
+            wrote = False
             _LOGGER.info(
                 "Observation — %s : %s (%s)",
                 room.name,
                 decision.order.value if decision.order else "aucun ordre",
                 decision.reason,
             )
+
+        self._refresh_plan(room, now, t_air, t_min)
+        if (
+            active
+            and not wrote
+            and self._config.optimizer_active
+            and room.plan is not None
+            and room.manual_hold_until is None
+        ):
+            await self._apply_optimizer(room, room.plan.next_order, now)
 
         self._check_effect(room, now, t_air, power)
 
@@ -272,7 +285,83 @@ class SupervisionLoop:
             order_source="thermopt" if room.last_written is current else "manuel",
             power=power,
             prediction=prediction,
+            plan_cost=room.plan.cost if room.plan else None,
+            next_action=room.plan.next_order if room.plan else None,
         )
+
+    # -- optimiser -----------------------------------------------------------
+    def _refresh_plan(
+        self, room: RoomRuntime, now: datetime, t_air: float | None, t_min: float
+    ) -> None:
+        """Build the 24 h plan when a validated model exists."""
+        model = self.models.get(room.id)
+        if model is None or t_air is None:
+            room.plan = None
+            return
+
+        config = self._config
+        profile = config.profile
+        windows = parse_windows(config.hc_windows)
+
+        t_min_series: list[float] = []
+        prices: list[float] = []
+        t_ext_series: list[float] = []
+        for index in range(STEPS):
+            moment = now + timedelta(minutes=15 * index)
+            t_min_series.append(profile.t_min(moment))
+            prices.append(price_at(moment, windows, config.hp_price, config.hc_price))
+            t_ext_series.append(self._forecast_temperature(moment))
+
+        previous = t_air
+        if len(room.recent) >= 2:
+            try:
+                previous = float(room.recent[-2]["t_air"])
+            except (TypeError, ValueError):
+                previous = t_air
+
+        p_max = max([*model.order_power.values(), 300.0])
+        try:
+            room.plan = build_plan(
+                params=model,
+                ladder=config.ladder,
+                t_min=t_min_series,
+                prices=prices,
+                t_ext=t_ext_series,
+                t_now=t_air,
+                t_prev=previous,
+                p_max=p_max,
+                start=now,
+            )
+        except Exception:  # noqa: BLE001 - a failed plan must not break the cycle
+            _LOGGER.exception("%s : construction du plan impossible", room.name)
+            room.plan = None
+
+    def _forecast_temperature(self, moment: datetime) -> float:
+        """Outdoor temperature for a future slot: forecast, else current, else 10 °C."""
+        if self._forecast:
+            target = moment.timestamp()
+            stamp, value = min(self._forecast, key=lambda point: abs(point[0] - target))
+            return float(value)
+        current = self._outdoor_temperature()
+        return float(current) if current is not None else 10.0
+
+    async def _apply_optimizer(self, room: RoomRuntime, order: Order | None, now: datetime) -> None:
+        """Apply the first step of the plan, under the same rate limits."""
+        if order is None or not room.config.fil_pilote_entity:
+            return
+        if self._current_order(room) is order or not self._rate_ok(room, now):
+            return
+
+        try:
+            await self._ha.select_option(room.config.fil_pilote_entity, z2m_value(order))
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Optimiseur : écriture refusée sur %s : %s", room.name, err)
+            return
+
+        room.last_written = order
+        room.last_write_at = now
+        room.pending_check = now + timedelta(minutes=EFFECT_CHECK_MINUTES)
+        _LOGGER.info("Optimiseur : %s → %s", room.name, order.value)
 
     def _current_order(self, room: RoomRuntime) -> Order | None:
         entity = room.config.fil_pilote_entity
@@ -296,33 +385,34 @@ class SupervisionLoop:
         room.manual_hold_until = manual_hold(now)
         _LOGGER.info("%s : réglage manuel détecté, pièce gelée 2 h", room.name)
 
-    async def _apply(self, room: RoomRuntime, decision: SafetyDecision, now: datetime) -> None:
+    async def _apply(self, room: RoomRuntime, decision: SafetyDecision, now: datetime) -> bool:
         order = decision.order
         if order is None or not room.config.fil_pilote_entity:
-            return
+            return False
 
         if self._current_order(room) is order:
-            return
+            return False
 
         if decision.escalate:
             # Escalation may bypass the 30-minute window, never the 5-minute
             # dwell time the module needs to decode the order.
             if room.last_write_at is not None and (now - room.last_write_at).total_seconds() < 60:
-                return
+                return False
         elif not self._rate_ok(room, now):
-            return
+            return False
 
         try:
             await self._ha.select_option(room.config.fil_pilote_entity, z2m_value(order))
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Écriture refusée sur %s : %s", room.name, err)
             self.degraded.append(f"{room.name} : écriture refusée")
-            return
+            return False
 
         room.last_written = order
         room.last_write_at = now
         room.pending_check = now + timedelta(minutes=EFFECT_CHECK_MINUTES)
         _LOGGER.info("Sécurité appliquée sur %s : %s (%s)", room.name, order.value, decision.reason)
+        return True
 
     @staticmethod
     def _rate_ok(room: RoomRuntime, now: datetime) -> bool:

@@ -109,6 +109,7 @@ class AppConfig:
     tolerance: float = DEFAULT_TOLERANCE
     high_margin: float = DEFAULT_HIGH_MARGIN
     supervisor_ack: bool = False
+    optimizer_active: bool = False
 
     # -- derived -------------------------------------------------------------
     @property
@@ -161,6 +162,7 @@ class AppConfig:
             "tolerance": self.tolerance,
             "high_margin": self.high_margin,
             "supervisor_ack": self.supervisor_ack,
+            "optimizer_active": self.optimizer_active,
         }
 
     @classmethod
@@ -187,6 +189,7 @@ class AppConfig:
             tolerance=_as_float(data.get("tolerance"), DEFAULT_TOLERANCE),
             high_margin=_as_float(data.get("high_margin"), DEFAULT_HIGH_MARGIN),
             supervisor_ack=bool(data.get("supervisor_ack", False)),
+            optimizer_active=bool(data.get("optimizer_active", False)),
         )
 
 

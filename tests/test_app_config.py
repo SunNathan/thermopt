@@ -134,6 +134,8 @@ def test_room_entities_are_complete() -> None:
         f"{ROOM.id}_safety",
         f"{ROOM.id}_applied_order",
         f"{ROOM.id}_prediction",
+        f"{ROOM.id}_plan_cost",
+        f"{ROOM.id}_next_action",
     }
 
     payload = next(p for _c, k, p in entities if k.endswith("temperature"))

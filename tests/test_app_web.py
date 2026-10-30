@@ -233,3 +233,32 @@ def test_weather_card_handles_a_missing_attribute() -> None:
     runtime.states = {"weather.home": EntityState("weather.home", "sunny", {})}
 
     assert runtime.weather()["temperature"] is None
+
+
+async def test_optimizer_flag_is_persisted(socket_enabled) -> None:
+    runtime = _runtime()
+    saved: list = []
+    runtime.save_config = saved.append
+
+    client = await _client(runtime)
+    try:
+        payload = dict(FORM)
+        payload["optimizer_active"] = "on"
+        await client.post("/config", data=payload, allow_redirects=False)
+
+        assert saved and saved[0].optimizer_active is True
+    finally:
+        await client.close()
+
+
+async def test_optimizer_is_off_by_default(socket_enabled) -> None:
+    runtime = _runtime()
+    saved: list = []
+    runtime.save_config = saved.append
+
+    client = await _client(runtime)
+    try:
+        await client.post("/config", data=FORM, allow_redirects=False)
+        assert saved and saved[0].optimizer_active is False
+    finally:
+        await client.close()

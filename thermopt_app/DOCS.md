@@ -119,6 +119,23 @@ constantes de temps et le gain extérieur sont affichés.
 Quand un modèle existe, `sensor.thermopt_<piece>_temperature_prevue_12h` publie
 la température attendue en maintenant l'ordre et la météo actuels.
 
+## Optimisation (MPC)
+
+Quand un modèle validé existe, l'onglet **Plan** montre pour chaque pièce le
+plan des 24 h prochaines : ordre retenu, température prévue, prix, puissance et
+coût, plus le coût total.
+
+L'optimiseur minimise `prix × puissance + λ × écart de confort²` sous
+contraintes (un changement d'ordre par 30 min, jamais sous 7 °C), par un plan
+glouton puis du hill-climbing sur blocs de 1 à 2 h.
+
+**En observation par défaut** : le plan est calculé et publié, mais aucun ordre
+n'est appliqué. Pour l'activer, coche *Optimisation active* dans
+Configuration — après avoir comparé prévu et réel pendant quelques jours.
+
+Les garde-fous restent prioritaires : s'ils forcent un ordre, l'optimiseur
+attend le cycle suivant.
+
 ## Journaux
 
 Onglet **Journal** de l'application. Pour plus de détail, passe `log_level` à

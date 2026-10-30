@@ -81,7 +81,14 @@ Plus : température, humidité, consignes min/max, créneau, puissance, énergie
 problème, et un switch de supervision, ainsi que deux boutons de diagnostic.
 
 Une vue Lovelace prête à coller est fournie dans
-[`dashboards/thermopt.yaml`](dashboards/thermopt.yaml).
+[`dashboards/thermopt.yaml`](dashboards/thermopt.yaml). Elle ne référence que
+les entités `sensor.thermopt_*` (dont les identifiants sont garantis) et
+construit le tableau des pièces depuis `sensor.thermopt_pieces` : aucun nom de
+pièce n'est codé en dur.
+
+Pour obtenir des cartes natives avec les vrais `entity_id`, appuie sur le
+bouton **« Générer la vue »** : il lit le registre d'entités, publie le YAML
+adapté dans une notification et liste les entités manquantes, s'il y en a.
 
 ## Développement
 

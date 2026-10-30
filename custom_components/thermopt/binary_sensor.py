@@ -100,6 +100,7 @@ class ThermOptSystemBinary(ThermOptEntity, BinarySensorEntity):
             return None
         return {
             "reasons": list(data.degraded),
+            "details": list(data.degraded_detail),
             "forecast_source": data.forecast_source,
             "next_transition": (data.next_transition.isoformat() if data.next_transition else None),
         }

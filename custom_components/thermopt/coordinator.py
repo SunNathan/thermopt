@@ -39,6 +39,7 @@ from .core.orders import Order
 from .perception.comfort import profile_issues
 from .perception.tariff import is_hc, next_transition, price_at
 from .perception.weather import outdoor_temperature_at
+from .reporting import describe_reason
 
 if TYPE_CHECKING:
     from .runtime import RoomRuntime, ThermOptRuntime
@@ -98,6 +99,7 @@ class RoomSnapshot:
     guard_floor: float | None = None
     slot: str | None = None
     degraded: tuple[str, ...] = ()
+    degraded_detail: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +120,7 @@ class ThermOptData:
     outdoor_now: float | None = None
     forecast_source: str = "none"
     degraded: tuple[str, ...] = ()
+    degraded_detail: tuple[str, ...] = ()
     rooms: dict[str, RoomSnapshot] = field(default_factory=dict)
 
 
@@ -150,7 +153,8 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
         if not runtime.rooms:
             degraded.add(DEGRADED_NO_ROOM)
 
-        if profile_issues(config.profile, config.ladder, config.ladder.setpoint(Order.ECO)):
+        issues = profile_issues(config.profile, config.ladder, config.ladder.setpoint(Order.ECO))
+        if issues:
             degraded.add(DEGRADED_PROFILE_UNREACHABLE)
 
         hc_now = is_hc(now, list(config.windows))
@@ -195,6 +199,7 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             outdoor_now=outdoor_temperature_at(forecast, now),
             forecast_source=forecast.source,
             degraded=tuple(sorted(degraded)),
+            degraded_detail=tuple(self._degradation_details(degraded, issues)),
             rooms=rooms,
         )
 
@@ -234,6 +239,9 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             guard_floor=guard,
             slot=config.profile.slot_at(now),
             degraded=tuple(sorted(reasons)),
+            degraded_detail=tuple(
+                describe_reason(reason, room=room.config.name) for reason in sorted(reasons)
+            ),
         )
 
     async def _async_restore_relay(self, room: RoomRuntime) -> None:
@@ -343,6 +351,22 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
         persistent_notification.async_create(
             self.hass, message, title=title, notification_id=notification_id
         )
+
+    def _degradation_details(self, reasons: set[str], issues: list[str]) -> list[str]:
+        """French sentences, in order, for the global degradation flags."""
+        details: list[str] = []
+        for reason in sorted(reasons):
+            if reason == DEGRADED_PROFILE_UNREACHABLE:
+                ladder = self.runtime.config.ladder
+                if issues:
+                    details.extend(
+                        describe_reason(reason, ladder=ladder, issue=issue) for issue in issues
+                    )
+                else:
+                    details.append(describe_reason(reason, ladder=ladder))
+            else:
+                details.append(describe_reason(reason))
+        return details
 
 
 def _parse_dt(raw: object) -> datetime | None:

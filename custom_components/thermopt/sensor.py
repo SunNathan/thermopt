@@ -80,6 +80,13 @@ SYSTEM_SENSORS: tuple[SystemSensorDescription, ...] = (
         value_fn=lambda data: data.price_now,
     ),
     SystemSensorDescription(
+        key="rooms",
+        name="Pièces",
+        icon="mdi:home-group",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: len(data.rooms),
+    ),
+    SystemSensorDescription(
         key="outdoor",
         name="Température extérieure",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -206,9 +213,35 @@ class ThermOptSystemSensor(ThermOptEntity, SensorEntity):
 
         if self.entity_description.key == "status":
             return {
-                "etat_interne": data.internal_state,
+                "raison": data.actuation_reason,
                 "pilotage_actif": data.actuation_enabled,
+                "etat_interne": data.internal_state,
                 "degraded": list(data.degraded),
+                "degraded_detail": list(data.degraded_detail),
+            }
+
+        if self.entity_description.key == "rooms":
+            return {
+                "rooms": [
+                    {
+                        "subentry_id": snapshot.subentry_id,
+                        "name": snapshot.name,
+                        "t_air": snapshot.t_air,
+                        "target_min": snapshot.target_min,
+                        "target_max": snapshot.target_max,
+                        "slot": snapshot.slot,
+                        "requested": (
+                            snapshot.requested_order.value if snapshot.requested_order else None
+                        ),
+                        "applied": snapshot.order.value if snapshot.order else None,
+                        "applied_label": LABELS_FR.get(snapshot.order) if snapshot.order else None,
+                        "source": snapshot.order_source,
+                        "power": snapshot.power,
+                        "energy": snapshot.energy,
+                        "degraded": list(snapshot.degraded_detail),
+                    }
+                    for snapshot in data.rooms.values()
+                ]
             }
 
         if self.entity_description.key == "last_command":

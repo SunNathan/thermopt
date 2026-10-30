@@ -13,10 +13,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from test_init import ROOM, SYSTEM, _room_entry, _set_states, _setup
 
 from custom_components.thermopt.const import (
+    CONF_COMFORT_SETPOINT,
     CONF_ROOM_AREA,
     DOMAIN,
     SUPERVISOR_MODES,
 )
+from custom_components.thermopt.dashboard import build_view_yaml, collect
 
 STRINGS = Path(__file__).resolve().parents[1] / "custom_components" / "thermopt" / "strings.json"
 
@@ -138,3 +140,75 @@ def test_every_mode_is_translated() -> None:
     states = strings["entity"]["sensor"]["status"]["state"]
     missing = [mode for mode in SUPERVISOR_MODES if mode not in states]
     assert not missing, f"Missing translations for modes: {missing}"
+
+
+async def test_pieces_sensor_lists_every_room(hass: HomeAssistant, weather_service) -> None:
+    _set_states(hass)
+    await _setup(hass, _room_entry())
+
+    pieces = _by_key(hass, "sensor", "pieces")
+    assert pieces, [s.entity_id for s in hass.states.async_all("sensor")]
+    assert pieces[0].state == "1"
+
+    rooms = pieces[0].attributes["rooms"]
+    assert rooms[0]["name"] == "Salon"
+    assert rooms[0]["t_air"] == 18.4
+    assert rooms[0]["applied"] == "comfort"
+    assert "source" in rooms[0]
+
+
+async def test_degraded_detail_is_a_readable_sentence(hass: HomeAssistant, weather_service) -> None:
+    """C = 20 °C must produce an explanation, not a raw key."""
+    _set_states(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="ThermOpt",
+        data={**SYSTEM, CONF_COMFORT_SETPOINT: 20.0},
+        subentries_data=(
+            {
+                "subentry_id": "room_salon",
+                "subentry_type": "room",
+                "title": "Salon",
+                "data": ROOM,
+                "unique_id": None,
+            },
+        ),
+    )
+    await _setup(hass, entry)
+
+    degraded = _by_key(hass, "binary_sensor", "mode_degrade")[0]
+    assert degraded.state == "on"
+    assert "profile_unreachable" in degraded.attributes["reasons"]
+
+    details = degraded.attributes["details"]
+    assert details, degraded.attributes
+    assert any("20,5" in line for line in details), details
+    # The status sensor carries the same explanation, for the dashboard.
+    assert _by_key(hass, "sensor", "statut")[0].attributes["degraded_detail"]
+
+
+async def test_dashboard_generator_uses_real_entity_ids(
+    hass: HomeAssistant, weather_service
+) -> None:
+    _set_states(hass)
+    entry = await _setup_and_return(hass)
+
+    runtime = entry.runtime_data
+    data = collect(hass, runtime)
+
+    assert "pilotage_actif" in data.system
+    assert "status" in data.system
+    assert data.rooms["Salon"]["temperature"] == "sensor.salon_temperature_mesuree"
+    assert data.rooms["Salon"]["applied_order"] == "sensor.salon_ordre_applique"
+    assert "systeme: status" not in data.missing
+
+    yaml_text = build_view_yaml(data, runtime)
+    assert "sensor.salon_temperature_mesuree" in yaml_text
+    assert "binary_sensor.thermopt_mode_degrade" in yaml_text
+    assert "type: glance" in yaml_text
+
+
+async def _setup_and_return(hass: HomeAssistant) -> MockConfigEntry:
+    entry = _room_entry()
+    await _setup(hass, entry)
+    return entry

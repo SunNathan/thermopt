@@ -8,6 +8,17 @@ doit toujours correspondre au tag publié.
 
 ### Ajouté
 
+- `sensor.thermopt_pieces` : nombre de pièces, et attribut `rooms` (température,
+  consignes, ordre demandé/appliqué, source, puissance) — permet un tableau de
+  bord sans coder en dur les `entity_id`.
+- Bouton **« Générer la vue »** : produit un YAML Lovelace avec les vrais
+  `entity_id` lus dans le registre, le publie dans une notification et liste
+  les entités manquantes.
+- Messages de dégradation lisibles avec les valeurs et la correction à
+  appliquer (`degraded_detail`), exposés par `sensor.thermopt_statut` et
+  `binary_sensor.thermopt_mode_degrade`.
+- Attribut `raison` sur `sensor.thermopt_statut`, pour que le dashboard dépende
+  d'une seule entité stable.
 - `binary_sensor.thermopt_pilotage_actif` : dit explicitement si ThermOpt
   pilote le chauffage, avec la raison en attribut.
 - `sensor.thermopt_statut` devient un capteur énuméré lisible
@@ -22,8 +33,7 @@ doit toujours correspondre au tag publié.
   une zone (module fil pilote détecté par son option `frost_protection`,
   relais, puissance, énergie, capteurs).
 - Vue Lovelace prête à coller : `dashboards/thermopt.yaml`.
-- `helpers.md` et `setup.md` précisent que les entités peuvent être dans
-  n'importe quelle pièce.
+- Bouton « Générer la vue » : YAML adapté aux noms réels de tes pièces.
 
 ### Modifié
 

@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .dashboard import build_view_yaml, collect, summary
 from .entity import ThermOptEntity, hub_device_info
 from .runtime import ThermOptRuntime
 
@@ -27,6 +28,7 @@ async def async_setup_entry(
         [
             ThermOptRunNowButton(runtime),
             ThermOptDumpButton(runtime),
+            ThermOptDashboardButton(runtime),
         ]
     )
 
@@ -49,6 +51,32 @@ class ThermOptRunNowButton(_ThermOptButton):
 
     async def async_press(self, **kwargs: Any) -> None:
         await self.coordinator.async_refresh()
+
+
+class ThermOptDashboardButton(_ThermOptButton):
+    """Emit a Lovelace view built from the real entity ids."""
+
+    def __init__(self, runtime: ThermOptRuntime) -> None:
+        super().__init__(
+            runtime, "generate_dashboard", "Générer la vue", "mdi:view-dashboard-outline"
+        )
+
+    async def async_press(self, **kwargs: Any) -> None:
+        from homeassistant.components import persistent_notification
+
+        data = collect(self.runtime.hass, self.runtime)
+        yaml_text = build_view_yaml(data, self.runtime)
+        _LOGGER.info(
+            "ThermOpt dashboard for entry %s:\n%s",
+            self.runtime.entry.entry_id,
+            yaml_text,
+        )
+        persistent_notification.async_create(
+            self.runtime.hass,
+            f"{summary(data, self.runtime)}\n\n```yaml\n{yaml_text}```",
+            title="ThermOpt — vue à coller",
+            notification_id="thermopt_dashboard",
+        )
 
 
 class ThermOptDumpButton(_ThermOptButton):

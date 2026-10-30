@@ -1,18 +1,25 @@
 # ThermOpt — vue Lovelace prête à coller
 #
 # Utilisation : Tableau de bord -> Modifier -> ⋮ -> Éditeur de configuration brute,
-# puis ajouter ce bloc dans `views:` (en adaptant les noms de pièces).
+# puis ajouter ce bloc dans `views:`.
 #
-# Aucune carte custom n'est nécessaire.
+# Cette vue ne référence QUE des entités dont l'identifiant est garanti
+# (sensor.thermopt_*). Les pièces sont lues depuis les attributs de
+# sensor.thermopt_pieces : aucun nom de pièce n'est codé en dur, donc la vue
+# fonctionne quel que soit le nom que tu as donné à tes pièces.
+#
+# Pour obtenir des cartes natives par pièce (avec les vrais entity_id),
+# appuie sur le bouton « Générer la vue » de l'intégration : il produit un YAML
+# adapté et le publie dans une notification.
 views:
   - title: ThermOpt
     path: thermopt
     icon: mdi:home-thermometer
     cards:
-      # --- Réponse à la question « est-ce que ça pilote mon chauffage ? » ---
+      # --- La question centrale : est-ce que ça pilote le chauffage ? ---
       - type: markdown
         content: >-
-          {% set actif = is_state('binary_sensor.thermopt_pilotage_actif', 'on') %}
+          {% set actif = state_attr('sensor.thermopt_statut', 'pilotage_actif') %}
           {% if actif %}
           ## 🟢 Pilotage actif
 
@@ -22,7 +29,7 @@ views:
 
           **Aucun ordre n'est envoyé aux radiateurs.**
 
-          {{ state_attr('binary_sensor.thermopt_pilotage_actif', 'raison') }}
+          {{ state_attr('sensor.thermopt_statut', 'raison') }}
           {% endif %}
 
           Mode : **{{ states('sensor.thermopt_statut') }}** ·
@@ -32,8 +39,6 @@ views:
         title: Superviseur
         columns: 3
         entities:
-          - entity: binary_sensor.thermopt_pilotage_actif
-            name: Pilotage
           - entity: sensor.thermopt_statut
             name: Mode
           - entity: binary_sensor.thermopt_mode_degrade
@@ -44,51 +49,24 @@ views:
             name: Prix
           - entity: sensor.thermopt_dernier_cycle
             name: Cycle
+          - entity: sensor.thermopt_pieces
+            name: Pièces
 
-      # --- Une carte par pièce : dupliquer et adapter les préfixes ---
-      - type: entities
-        title: Salon
-        show_header_toggle: false
-        entities:
-          - entity: sensor.salon_temperature_mesuree
-            name: Température
-          - entity: sensor.salon_consigne_minimale
-            name: Consigne minimale
-          - entity: sensor.salon_consigne_maximale
-            name: Consigne maximale
-          - entity: sensor.salon_ordre_demande
-            name: Ordre demandé
-          - entity: sensor.salon_ordre_applique
-            name: Ordre appliqué
-          - entity: sensor.salon_puissance
-            name: Puissance
-          - entity: sensor.salon_energie
-            name: Énergie
-          - entity: sensor.salon_creneau
-            name: Créneau
+      # --- Tableau des pièces, construit depuis les attributs ---
+      - type: markdown
+        content: >-
+          {%- set rooms = state_attr('sensor.thermopt_pieces', 'rooms') or [] -%}
+          {%- if rooms %}
+          | Pièce | Température | Consigne | Ordre appliqué | Source | Puissance |
+          |---|---|---|---|---|---|
+          {%- for r in rooms %}
+          | {{ r.name }} | {{ r.t_air if r.t_air is not none else '—' }} °C | {{ r.target_min if r.target_min is not none else '—' }} – {{ r.target_max if r.target_max is not none else '—' }} °C | {{ r.applied_label if r.applied_label else '—' }} | {{ r.source }} | {{ r.power if r.power is not none else '—' }} W |
+          {%- endfor %}
+          {%- else %}
+          Aucune pièce configurée. Ajoute-la depuis la carte de l'intégration ThermOpt.
+          {%- endif %}
 
-      - type: entities
-        title: Chambre
-        show_header_toggle: false
-        entities:
-          - entity: sensor.chambre_temperature_mesuree
-            name: Température
-          - entity: sensor.chambre_consigne_minimale
-            name: Consigne minimale
-          - entity: sensor.chambre_consigne_maximale
-            name: Consigne maximale
-          - entity: sensor.chambre_ordre_demande
-            name: Ordre demandé
-          - entity: sensor.chambre_ordre_applique
-            name: Ordre appliqué
-          - entity: sensor.chambre_puissance
-            name: Puissance
-          - entity: sensor.chambre_energie
-            name: Énergie
-          - entity: sensor.chambre_creneau
-            name: Créneau
-
-      # --- N'apparaît que s'il y a un problème ---
+      # --- Raisons lisibles, uniquement si quelque chose ne va pas ---
       - type: conditional
         conditions:
           - entity: binary_sensor.thermopt_mode_degrade
@@ -98,6 +76,6 @@ views:
           content: >-
             ## ⚠️ Situation dégradée
 
-            {{ state_attr('binary_sensor.thermopt_mode_degrade', 'reasons') | join(', ') }}
-
-            Source météo : {{ state_attr('binary_sensor.thermopt_mode_degrade', 'forecast_source') }}
+            {%- for line in state_attr('binary_sensor.thermopt_mode_degrade', 'details') or [] %}
+            - {{ line }}
+            {%- endfor %}

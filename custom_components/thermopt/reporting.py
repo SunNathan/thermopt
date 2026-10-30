@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .const import (
     DEGRADED_ACTUATOR_UNAVAILABLE,
+    DEGRADED_NO_EFFECT,
     DEGRADED_NO_ROOM,
     DEGRADED_PROFILE_UNREACHABLE,
     DEGRADED_RELAY_OFF,
@@ -98,5 +99,11 @@ def describe_reason(
         return (
             "Le signal Heures Creuses réel ne correspond pas au planning "
             "configuré. Le planning fait foi ; vérifie tes plages."
+        )
+    if reason == DEGRADED_NO_EFFECT:
+        return (
+            f"{who}l'ordre a été appliqué mais le radiateur ne consomme pas de "
+            "puissance alors que la pièce est sous sa consigne. Vérifie le "
+            "relais, le câblage fil pilote et le mode local du radiateur."
         )
     return reason

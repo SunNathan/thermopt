@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 import yaml
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry, device_registry
-from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from test_init import ROOM, SYSTEM, _room_entry, _set_states, _setup
 
@@ -36,56 +34,29 @@ def _by_key(hass: HomeAssistant, platform: str, needle: str):
     ]
 
 
-@pytest.fixture
-def weather_service(hass):
-    """Minimal forecast so that the weather flag does not degrade the state."""
-    from homeassistant.core import ServiceCall, SupportsResponse
-
-    async def _get_forecasts(call: ServiceCall) -> dict:
-        now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
-        from datetime import timedelta
-
-        return {
-            call.data["entity_id"]: {
-                "forecast": [
-                    {
-                        "datetime": (now + timedelta(hours=hour)).isoformat(),
-                        "temperature": 6.0 - hour * 0.2,
-                    }
-                    for hour in range(24)
-                ]
-            }
-        }
-
-    hass.services.async_register(
-        "weather",
-        "get_forecasts",
-        _get_forecasts,
-        supports_response=SupportsResponse.ONLY,
-    )
-
-
-async def test_pilotage_is_explicitly_inactive(hass: HomeAssistant, weather_service) -> None:
-    """The whole point: the binary sensor says no order is sent, and why."""
+async def test_pilotage_is_explicitly_safety_only(hass: HomeAssistant, weather_service) -> None:
+    """ThermOpt can write, but only through the safety layer."""
     _set_states(hass)
     await _setup(hass, _room_entry())
 
     pilotage = _by_key(hass, "binary_sensor", "pilotage_actif")
     assert pilotage, [s.entity_id for s in hass.states.async_all("binary_sensor")]
-    assert pilotage[0].state == "off"
-    assert "non implémenté" in pilotage[0].attributes["raison"]
-    assert pilotage[0].attributes["mode"] == "observation"
+    assert pilotage[0].state == "on"
+    assert pilotage[0].attributes["portee"] == "securite"
+    assert "borne de confort" in pilotage[0].attributes["raison"]
+    assert pilotage[0].attributes["mode"] == "securite"
 
 
-async def test_status_is_observation_and_last_command_empty(
+async def test_status_is_safety_mode_and_last_command_empty(
     hass: HomeAssistant, weather_service
 ) -> None:
     _set_states(hass)
     await _setup(hass, _room_entry())
 
     status = _by_key(hass, "sensor", "statut")
-    assert status[0].state == "observation"
-    assert status[0].attributes["pilotage_actif"] is False
+    assert status[0].state == "securite"
+    assert status[0].attributes["pilotage_actif"] is True
+    assert status[0].attributes["portee"] == "securite"
     assert status[0].attributes["etat_interne"]
 
     command = _by_key(hass, "sensor", "derniere_commande")
@@ -157,9 +128,10 @@ async def test_pieces_sensor_lists_every_room(hass: HomeAssistant, weather_servi
 
     rooms = pieces[0].attributes["rooms"]
     assert rooms[0]["name"] == "Salon"
-    assert rooms[0]["t_air"] == 18.4
+    assert rooms[0]["t_air"] == 21.0
     assert rooms[0]["applied"] == "comfort"
     assert "source" in rooms[0]
+    assert rooms[0]["safety"] == "inactif"
 
 
 async def test_degraded_detail_is_a_readable_sentence(hass: HomeAssistant, weather_service) -> None:

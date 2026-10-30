@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .dashboard import build_dashboard_yaml, collect, summary, validate_dashboard_yaml
 from .entity import ThermOptEntity, hub_device_info
+from .export import export_csv
 from .runtime import ThermOptRuntime
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ async def async_setup_entry(
             ThermOptRunNowButton(runtime),
             ThermOptDumpButton(runtime),
             ThermOptDashboardButton(runtime),
+            ThermOptExportButton(runtime),
         ]
     )
 
@@ -53,8 +55,30 @@ class ThermOptRunNowButton(_ThermOptButton):
         await self.coordinator.async_refresh()
 
 
+class ThermOptExportButton(_ThermOptButton):
+    """Export the 5-minute sampling buffer to a CSV file in /config."""
+
+    def __init__(self, runtime: ThermOptRuntime) -> None:
+        super().__init__(runtime, "export_history", "Exporter l'historique", "mdi:database-export")
+
+    async def async_press(self, **kwargs: Any) -> None:
+        from homeassistant.components import persistent_notification
+
+        path, rows = await self.runtime.hass.async_add_executor_job(
+            export_csv, self.runtime.hass, self.runtime
+        )
+        persistent_notification.async_create(
+            self.runtime.hass,
+            f"{rows} échantillons exportés.\n\n"
+            f"Fichier : `{path}`\n\n"
+            "Récupérable par Samba ou l'éditeur de fichiers.",
+            title="ThermOpt — historique exporté",
+            notification_id="thermopt_export",
+        )
+
+
 class ThermOptDashboardButton(_ThermOptButton):
-    """Emit a Lovelace view built from the real entity ids."""
+    """Emit a Lovelace dashboard built from the real entity ids."""
 
     def __init__(self, runtime: ThermOptRuntime) -> None:
         super().__init__(

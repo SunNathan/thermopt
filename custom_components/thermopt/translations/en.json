@@ -165,6 +165,7 @@
         "name": "Status",
         "state": {
           "observation": "Observation only",
+          "securite": "Safety only",
           "pilotage": "Actively controlling",
           "repli": "Fallback",
           "manuel": "Manual",

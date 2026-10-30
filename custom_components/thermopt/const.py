@@ -96,6 +96,7 @@ STATE_MANUAL = "manuel"
 # --- Public modes exposed by ``sensor.thermopt_statut`` ----------------------
 # Readable, translated, stable: they are what the user and automations see.
 MODE_OBSERVATION = "observation"
+MODE_SECURITE = "securite"
 MODE_PILOTAGE = "pilotage"
 MODE_REPLI = "repli"
 MODE_MANUEL = "manuel"
@@ -103,18 +104,24 @@ MODE_DEGRADE = "degrade"
 
 SUPERVISOR_MODES = [
     MODE_OBSERVATION,
+    MODE_SECURITE,
     MODE_PILOTAGE,
     MODE_REPLI,
     MODE_MANUEL,
     MODE_DEGRADE,
 ]
 
-# --- Actuation gate ----------------------------------------------------------
-# False until the closed loop exists (milestone 2: RC model + MPC).
-# While False, ThermOpt never writes a fil pilote order and says so explicitly
-# through ``binary_sensor.thermopt_pilotage_actif``.
-ACTUATION_IMPLEMENTED = False
-ACTUATION_REASON = "Pilotage non implémenté : aucun ordre n'est envoyé au radiateur (jalon 2)"
+# --- Actuation gates ---------------------------------------------------------
+# Two independent scopes. The safety layer is allowed to write; the optimiser
+# (MPC) is not built yet. Guard rails must never be blocked by a degraded
+# situation: a cold room must be rescued even if the comfort profile is wrong.
+SAFETY_ACTUATION = True
+OPTIMIZER_ACTUATION = False
+
+SAFETY_REASON = (
+    "Sécurité seule : ThermOpt n'envoie un ordre que si la pièce passe sous sa borne de confort."
+)
+OBSERVATION_REASON = "Sécurité et optimisation désactivées : aucun ordre n'est envoyé au radiateur."
 
 # --- Degradation reasons -----------------------------------------------------
 DEGRADED_WEATHER = "weather_unavailable"
@@ -125,6 +132,7 @@ DEGRADED_RELAY_OFF = "relay_off"
 DEGRADED_TARIFF_MISMATCH = "tariff_mismatch"
 DEGRADED_PROFILE_UNREACHABLE = "profile_unreachable"
 DEGRADED_NO_ROOM = "no_room_configured"
+DEGRADED_NO_EFFECT = "no_effect"
 
 # --- Misc --------------------------------------------------------------------
 MANUFACTURER = "ThermOpt"

@@ -90,6 +90,7 @@ class ThermOptSystemBinary(ThermOptEntity, BinarySensorEntity):
             return {
                 "raison": data.actuation_reason,
                 "mode": data.mode,
+                "portee": data.portee,
                 "derniere_commande": (command.at.isoformat() if command and command.at else None),
                 "pieces_actives": [
                     snapshot.name for snapshot in data.rooms.values() if not snapshot.degraded

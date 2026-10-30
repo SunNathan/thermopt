@@ -151,6 +151,12 @@ ROOM_SENSORS: tuple[RoomSensorDescription, ...] = (
         value_fn=lambda room: room.order.value if room.order else None,
     ),
     RoomSensorDescription(
+        key="safety",
+        name="Sécurité",
+        icon="mdi:shield-check",
+        value_fn=lambda room: room.safety_state,
+    ),
+    RoomSensorDescription(
         key="power",
         name="Puissance",
         device_class=SensorDeviceClass.POWER,
@@ -215,6 +221,7 @@ class ThermOptSystemSensor(ThermOptEntity, SensorEntity):
             return {
                 "raison": data.actuation_reason,
                 "pilotage_actif": data.actuation_enabled,
+                "portee": data.portee,
                 "etat_interne": data.internal_state,
                 "degraded": list(data.degraded),
                 "degraded_detail": list(data.degraded_detail),
@@ -236,6 +243,8 @@ class ThermOptSystemSensor(ThermOptEntity, SensorEntity):
                         "applied": snapshot.order.value if snapshot.order else None,
                         "applied_label": LABELS_FR.get(snapshot.order) if snapshot.order else None,
                         "source": snapshot.order_source,
+                        "safety": snapshot.safety_state,
+                        "safety_reason": snapshot.safety_reason,
                         "power": snapshot.power,
                         "energy": snapshot.energy,
                         "degraded": list(snapshot.degraded_detail),
@@ -292,6 +301,12 @@ class ThermOptRoomSensor(ThermOptRoomEntity, SensorEntity):
                 "libelle": LABELS_FR.get(room.order) if room.order else None,
                 "source": room.order_source,
                 "degraded": list(room.degraded),
+            }
+
+        if self.entity_description.key == "safety":
+            return {
+                "raison": room.safety_reason,
+                "degraded": list(room.degraded_detail),
             }
 
         if self.entity_description.key == "requested_order":

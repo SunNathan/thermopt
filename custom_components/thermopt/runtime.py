@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -29,6 +29,7 @@ from .const import (
 from .coordinator import LastCommand, ThermOptCoordinator
 from .core.orders import Order, order_from_z2m
 from .core.ring_buffer import RoomSeries
+from .core.safety import EFFECT_CHECK_MINUTES, MANUAL_WRITE_GRACE, manual_hold
 from .perception.liveness import is_frozen
 from .perception.weather import WeatherProvider
 from .settings import RoomConfig, SystemConfig, room_subentries
@@ -54,6 +55,15 @@ class RoomRuntime:
         self.series = RoomSeries()
         self.enabled = True
         self.target_min: float | None = None
+        # Safety layer state
+        self.last_written: Order | None = None
+        self.last_write_at: datetime | None = None
+        self.manual_hold_until: datetime | None = None
+        self.guard_armed = False
+        self.suspended_until: datetime | None = None
+        self.safety_state = "inactif"
+        self.pending_check: datetime | None = None
+        self.no_effect = False
         self.driver = (
             SelectDriver(hass, config.fil_pilote_entity) if config.fil_pilote_entity else None
         )
@@ -103,11 +113,46 @@ class RoomRuntime:
 
         return reasons
 
+    # -- safety --------------------------------------------------------------
+    def update_manual_override(self, now: datetime) -> bool:
+        """Detect a change nobody from ThermOpt made, and hold for 2 hours."""
+        if self.last_written is None or self.manual_hold_until is not None:
+            return False
+
+        current = self.order
+        if current is None:
+            return False
+
+        if self.last_write_at is not None:
+            elapsed = (now - self.last_write_at).total_seconds()
+            if elapsed < MANUAL_WRITE_GRACE:
+                # MQTT may not have reflected our own write yet.
+                return False
+
+        if current is not self.last_written:
+            self.manual_hold_until = manual_hold(now)
+            _LOGGER.info(
+                "Room %s: manual override detected (%s instead of %s), holding until %s",
+                self.config.name,
+                current.value,
+                self.last_written.value,
+                self.manual_hold_until.strftime("%H:%M"),
+            )
+            return True
+
+        return False
+
     # -- persistence ---------------------------------------------------------
     def dump(self) -> dict:
         return {
             "enabled": self.enabled,
             "series": self.series.to_dict(),
+            "last_written": self.last_written.value if self.last_written else None,
+            "last_write_at": self.last_write_at.isoformat() if self.last_write_at else None,
+            "manual_hold_until": (
+                self.manual_hold_until.isoformat() if self.manual_hold_until else None
+            ),
+            "guard_armed": self.guard_armed,
         }
 
     def load(self, data: dict | None) -> None:
@@ -117,6 +162,12 @@ class RoomRuntime:
         series = data.get("series")
         if series:
             self.series = RoomSeries.from_dict(series)
+
+        written = data.get("last_written")
+        self.last_written = order_from_z2m(str(written)) if written else None
+        self.last_write_at = _parse(data.get("last_write_at"))
+        self.manual_hold_until = _parse(data.get("manual_hold_until"))
+        self.guard_armed = bool(data.get("guard_armed", False))
 
 
 class ThermOptRuntime:
@@ -223,12 +274,20 @@ class ThermOptRuntime:
         return state is not None and str(state.state).lower() == "on"
 
     def async_record_command(
-        self, room: str, order: Order, result: str, source: str = "thermopt"
+        self, room: str, order: Order, result: str, source: str = "securite"
     ) -> None:
         """Remember the last order ThermOpt itself wrote."""
+        now = dt_util.now()
         self.last_command = LastCommand(
-            at=dt_util.now(), room=room, order=order, result=result, source=source
+            at=now, room=room, order=order, result=result, source=source
         )
+
+        runtime_room = self.rooms.get(room)
+        if runtime_room is not None and result == "envoyee":
+            runtime_room.last_written = order
+            runtime_room.last_write_at = now
+            runtime_room.pending_check = now + timedelta(minutes=EFFECT_CHECK_MINUTES)
+
         self._schedule_save()
 
 

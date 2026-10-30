@@ -54,9 +54,9 @@ SELECT_OPTIONS = [
 ]
 
 
-def _set_states(hass, relay: str = STATE_ON) -> None:
+def _set_states(hass, relay: str = STATE_ON, temperature: str = "21.0") -> None:
     hass.states.async_set("weather.home", "sunny", {"temperature": 8.0})
-    hass.states.async_set("sensor.salon_temperature", "18.4", {"unit_of_measurement": "°C"})
+    hass.states.async_set("sensor.salon_temperature", temperature, {"unit_of_measurement": "Â°C"})
     hass.states.async_set("select.salon_pilot_wire_mode", "comfort", {"options": SELECT_OPTIONS})
     hass.states.async_set("switch.salon", relay)
     hass.states.async_set("sensor.salon_power", "780", {"unit_of_measurement": "W"})
@@ -184,7 +184,7 @@ async def test_setup_creates_entities(hass, weather_service) -> None:
 
     status = _find(hass, "sensor", "statut")
     assert status, [s.entity_id for s in hass.states.async_all("sensor")]
-    assert status[0].state == "observation"
+    assert status[0].state == "securite"
 
     # Room entities are named after the room device.
     assert _find(hass, "sensor", "salon")
@@ -244,4 +244,4 @@ async def test_tariff_mismatch_is_reported(hass, weather_service) -> None:
         ),
     )
     await _setup(hass, entry)
-    assert _find(hass, "sensor", "statut")[0].state == "observation"
+    assert _find(hass, "sensor", "statut")[0].state == "securite"

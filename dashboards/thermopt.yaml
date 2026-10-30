@@ -23,10 +23,18 @@ views:
       - type: markdown
         content: |
           {% set actif = state_attr('sensor.thermopt_statut', 'pilotage_actif') %}
-          {% if actif %}
-          ## 🟢 Pilotage actif
+          {% set portee = state_attr('sensor.thermopt_statut', 'portee') %}
+          {% if actif and portee == 'optimiseur' %}
+          ## 🟢 Pilotage complet
 
-          ThermOpt applique ses ordres aux radiateurs.
+          ThermOpt optimise les ordres selon le tarif et la météo.
+          {% elif actif %}
+          ## 🟡 Sécurité seule
+
+          ThermOpt n'envoie un ordre que si une pièce passe sous sa borne de
+          confort. L'optimisation arrivera plus tard.
+
+          {{ state_attr('sensor.thermopt_statut', 'raison') }}
           {% else %}
           ## ⚪ Pilotage inactif
 
@@ -60,10 +68,10 @@ views:
         content: |
           {%- set rooms = state_attr('sensor.thermopt_pieces', 'rooms') or [] -%}
           {%- if rooms %}
-          | Pièce | Température | Consigne | Ordre appliqué | Source | Puissance |
+          | Pièce | Température | Consigne | Ordre appliqué | Source | Sécurité |
           |---|---|---|---|---|---|
           {%- for r in rooms %}
-          | {{ r.name }} | {{ r.t_air if r.t_air is not none else '—' }} °C | {{ r.target_min if r.target_min is not none else '—' }} – {{ r.target_max if r.target_max is not none else '—' }} °C | {{ r.applied_label if r.applied_label else '—' }} | {{ r.source }} | {{ r.power if r.power is not none else '—' }} W |
+          | {{ r.name }} | {{ r.t_air if r.t_air is not none else '—' }} °C | {{ r.target_min if r.target_min is not none else '—' }} – {{ r.target_max if r.target_max is not none else '—' }} °C | {{ r.applied_label if r.applied_label else '—' }} | {{ r.source }} | {{ r.safety }} |
           {%- endfor %}
           {%- else %}
           Aucune pièce configurée. Ajoute-la depuis la carte de l'intégration ThermOpt.

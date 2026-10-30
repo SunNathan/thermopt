@@ -36,6 +36,36 @@ if sys.platform == "win32":  # pragma: no cover - platform specific
     pytest_socket.disable_socket = lambda *args, **kwargs: None  # type: ignore[assignment]
 
 
+@pytest.fixture
+def weather_service(hass):
+    """Register a weather forecast service returning hourly data."""
+    from datetime import timedelta
+
+    from homeassistant.core import ServiceCall, SupportsResponse
+    from homeassistant.util import dt as dt_util
+
+    async def _get_forecasts(call: ServiceCall) -> dict:
+        now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+        return {
+            call.data["entity_id"]: {
+                "forecast": [
+                    {
+                        "datetime": (now + timedelta(hours=hour)).isoformat(),
+                        "temperature": 6.0 - hour * 0.2,
+                    }
+                    for hour in range(24)
+                ]
+            }
+        }
+
+    hass.services.async_register(
+        "weather",
+        "get_forecasts",
+        _get_forecasts,
+        supports_response=SupportsResponse.ONLY,
+    )
+
+
 @pytest.fixture(scope="session")
 def _config_dir(tmp_path_factory: pytest.TempPathFactory) -> str:
     """Config dir containing a copy of the integration."""

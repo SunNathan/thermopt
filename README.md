@@ -85,6 +85,25 @@ dans les options de l'intégration.
 - `sensor.<piece>_ordre_demande` — ce que ThermOpt veut appliquer
 - `sensor.<piece>_ordre_applique` — ce que le module contient réellement, avec
   l'attribut `source` : `thermopt`, `manuel`, `repli` ou `inconnue`
+- `sensor.<piece>_securite` — `inactif`, `plancher`, `hors_gel`, `fenetre` ou
+  `override`, avec la raison en attribut
+
+## Ce que ThermOpt écrit réellement
+
+Une seule chose pour l'instant : **les garde-fous**. `pilotage_actif` est à
+`on` avec `portee: securite`, et le mode vaut `securite`.
+
+| Situation | Action |
+|---|---|
+| Pièce sous `T_min − 0,5 °C` | Confort forcé, notification |
+| Pièce sous 7 °C | Confort forcé, alarme |
+| Chute > 1,5 °C en 10 min | suspension 60 min, on laisse le SOKIO gérer |
+| `select` changé à la main | pièce gelée 2 h |
+| Ordre chauffant sans puissance mesurée | alerte `no_effect` |
+
+Le garde-fou contourne la limite « 1 changement / 30 min » mais jamais le dwell
+de 5 minutes, qui est une contrainte matérielle du module. L'optimisation
+tarifaire (MPC) n'est pas encore branchée : `portee` passera à `optimiseur`.
 
 Plus : température, humidité, consignes min/max, créneau, puissance, énergie,
 problème, et un switch de supervision, ainsi que deux boutons de diagnostic.

@@ -9,11 +9,23 @@ doit toujours correspondre au tag publié.
 ### Ajouté
 
 - `sensor.thermopt_pieces` : nombre de pièces, et attribut `rooms` (température,
-  consignes, ordre demandé/appliqué, source, puissance) — permet un tableau de
+  consignes, ordre demandé/appliqué, source, sécurité) — permet un tableau de
   bord sans coder en dur les `entity_id`.
-- Bouton **« Générer la vue »** : produit un YAML Lovelace avec les vrais
-  `entity_id` lus dans le registre, le publie dans une notification et liste
-  les entités manquantes.
+- **Couche de sécurité active** : ThermOpt écrit désormais des ordres fil
+  pilote, mais uniquement via les garde-fous (plancher de confort, hors-gel
+  absolu). `pilotage_actif` passe à `on` avec `portee: securite`, et un mode
+  `securite` (« Sécurité seule ») apparaît.
+- `sensor.<piece>_securite` : `inactif` / `plancher` / `hors_gel` / `fenetre` /
+  `override`, avec la raison en attribut.
+- Détection de fenêtre ouverte : chute > 1,5 °C en 10 min → suspension 60 min.
+- Détection d'override manuel : modification du `select` hors ThermOpt → pièce
+  gelée 2 h (le hors-gel absolu reste prioritaire).
+- Vérification d'effet : ordre chauffant sans puissance mesurée au bout de
+  15 min → `no_effect` + alerte.
+- Bouton **« Exporter l'historique »** : CSV du buffer 5 min dans
+  `/config/thermopt_exports/`, base de l'identification du modèle (jalon 3).
+- Les garde-fous ne sont jamais bloqués par une situation dégradée : une pièce
+  froide est secourue même si le profil de confort est incohérent.
 
 ### Corrigé
 

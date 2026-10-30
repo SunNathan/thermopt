@@ -17,10 +17,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    ACTUATION_IMPLEMENTED,
-    ACTUATION_REASON,
     CYCLE_INTERVAL,
     DEGRADED_ACTUATOR_UNAVAILABLE,
+    DEGRADED_NO_EFFECT,
     DEGRADED_NO_ROOM,
     DEGRADED_PROFILE_UNREACHABLE,
     DEGRADED_RELAY_OFF,
@@ -32,10 +31,22 @@ from .const import (
     MODE_OBSERVATION,
     MODE_PILOTAGE,
     MODE_REPLI,
+    MODE_SECURITE,
+    OBSERVATION_REASON,
+    OPTIMIZER_ACTUATION,
+    SAFETY_ACTUATION,
+    SAFETY_REASON,
     STATE_COLLECTE,
     STATE_MANUAL,
 )
 from .core.orders import Order
+from .core.safety import (
+    EFFECT_MIN_POWER,
+    WINDOW_SECONDS,
+    SafetyState,
+    detect_window,
+    evaluate,
+)
 from .perception.comfort import profile_issues
 from .perception.tariff import is_hc, next_transition, price_at
 from .perception.weather import outdoor_temperature_at
@@ -98,6 +109,8 @@ class RoomSnapshot:
     target_max: float | None = None
     guard_floor: float | None = None
     slot: str | None = None
+    safety_state: str = "inactif"
+    safety_reason: str = ""
     degraded: tuple[str, ...] = ()
     degraded_detail: tuple[str, ...] = ()
 
@@ -110,7 +123,8 @@ class ThermOptData:
     mode: str = MODE_OBSERVATION
     internal_state: str = STATE_COLLECTE
     actuation_enabled: bool = False
-    actuation_reason: str | None = ACTUATION_REASON
+    actuation_reason: str | None = SAFETY_REASON
+    portee: str = "aucune"
     last_command: LastCommand | None = None
     last_cycle: datetime | None = None
     next_cycle: datetime | None = None
@@ -182,14 +196,16 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
         auto = self._auto_enabled()
         internal_state = self._status(degraded)
         last_command = runtime.last_command
-        actuation_enabled = ACTUATION_IMPLEMENTED and auto and not degraded
+        actuation_enabled = (SAFETY_ACTUATION or OPTIMIZER_ACTUATION) and auto
+        actuation_enabled = actuation_enabled and not runtime.fallback_active
 
         return ThermOptData(
             status=internal_state,
             mode=self._mode(auto=auto, degraded=degraded),
             internal_state=internal_state,
             actuation_enabled=actuation_enabled,
-            actuation_reason=None if actuation_enabled else self._actuation_reason(auto, degraded),
+            actuation_reason=self._actuation_reason(auto, degraded),
+            portee=self._portee(),
             last_command=last_command,
             last_cycle=now,
             next_cycle=now + CYCLE_INTERVAL,
@@ -217,12 +233,38 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
 
         if room.driver is None or not room.driver.available:
             reasons.add(DEGRADED_ACTUATOR_UNAVAILABLE)
+        else:
+            room.update_manual_override(now)
 
         if room.config.relay_entity:
             relay = self.hass.states.get(room.config.relay_entity)
             if relay is not None and str(relay.state).lower() == "off":
                 reasons.add(DEGRADED_RELAY_OFF)
                 await self._async_restore_relay(room)
+
+        decision = evaluate(
+            now=now,
+            t_air=room.t_air,
+            t_min=t_min,
+            current=room.order,
+            armed=room.guard_armed,
+            suspended_until=room.suspended_until,
+            manual_hold_until=room.manual_hold_until,
+            window_open=detect_window(room.series.tail(WINDOW_SECONDS, now.timestamp()), now),
+        )
+        if decision.suspend_until is not None:
+            room.suspended_until = decision.suspend_until
+        room.guard_armed = decision.armed
+
+        await self._async_apply_safety(room, decision, now)
+
+        self._refresh_effect_check(room, now)
+        if room.no_effect:
+            reasons.add(DEGRADED_NO_EFFECT)
+
+        previous = room.safety_state
+        room.safety_state = decision.state.value
+        self._notify_safety(room, decision, previous)
 
         return RoomSnapshot(
             subentry_id=room.config.subentry_id,
@@ -238,11 +280,113 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             target_max=round(t_max, 2),
             guard_floor=guard,
             slot=config.profile.slot_at(now),
+            safety_state=decision.state.value,
+            safety_reason=decision.reason,
             degraded=tuple(sorted(reasons)),
             degraded_detail=tuple(
                 describe_reason(reason, room=room.config.name) for reason in sorted(reasons)
             ),
         )
+
+    # ------------------------------------------------------------------
+    async def _async_apply_safety(self, room: RoomRuntime, decision, now: datetime) -> None:
+        """Write the forced order, if every gate is open."""
+        if decision.order is None or room.driver is None:
+            return
+        if not room.enabled or not self._auto_enabled():
+            return
+        if self.runtime.fallback_active or not room.driver.available:
+            return
+
+        current = room.order
+        if current is decision.order:
+            return
+
+        verdict = room.driver.limiter.check(now, current, decision.order)
+        if not verdict.allowed:
+            # The 5-minute dwell time is a hardware constraint, never bypassed.
+            if verdict.reason == "dwell_time":
+                return
+            if not decision.escalate:
+                return
+
+        try:
+            await room.driver.async_write(decision.order)
+        except Exception as err:  # noqa: BLE001 - a failed write must not break the cycle
+            _LOGGER.error(
+                "Could not apply %s to %s: %s", decision.order.value, room.config.name, err
+            )
+            self.runtime.async_record_command(room.config.subentry_id, decision.order, "refusee")
+            return
+
+        self.runtime.async_record_command(room.config.subentry_id, decision.order, "envoyee")
+        _LOGGER.info(
+            "Safety applied %s to %s (%s)",
+            decision.order.value,
+            room.config.name,
+            decision.reason,
+        )
+
+    def _refresh_effect_check(self, room: RoomRuntime, now: datetime) -> None:
+        """Verify that a heating order actually draws power."""
+        if room.pending_check is None or now < room.pending_check:
+            return
+        room.pending_check = None
+
+        order = room.last_written
+        power = room.power
+        t_air = room.t_air
+        if order is None or power is None or t_air is None:
+            return
+
+        setpoint = self.runtime.config.ladder.setpoint(order)
+        missing = power <= EFFECT_MIN_POWER and t_air < setpoint - 0.5
+        if missing and not room.no_effect:
+            _LOGGER.warning(
+                "No effect in %s: order %s, %.0f W measured, %.1f °C for a %.1f °C setpoint",
+                room.config.name,
+                order.value,
+                power,
+                t_air,
+                setpoint,
+            )
+            self._notify_once(
+                f"thermopt_effect_{room.config.subentry_id}",
+                "ThermOpt - aucune puissance mesurée",
+                f"« {room.config.name} » : l'ordre {order.value} est appliqué mais le "
+                f"radiateur ne consomme rien ({power:.0f} W) alors que la pièce est à "
+                f"{t_air:.1f} °C pour une consigne de {setpoint:.1f} °C.",
+            )
+        room.no_effect = missing
+
+    def _notify_safety(self, room: RoomRuntime, decision, previous: str) -> None:
+        """Notify on transitions only, so the guard cannot spam."""
+        from homeassistant.components import persistent_notification
+
+        state = decision.state.value
+        notification_id = f"thermopt_safety_{room.config.subentry_id}"
+
+        if state == SafetyState.FROST.value:
+            self._notify_once(
+                notification_id,
+                "ThermOpt - hors-gel absolu",
+                f"« {room.config.name} » : {decision.reason}. Confort forcé.",
+            )
+            return
+
+        if state == SafetyState.FLOOR.value and previous != SafetyState.FLOOR.value:
+            self._notify_once(
+                notification_id,
+                "ThermOpt - plancher de confort",
+                f"« {room.config.name} » : {decision.reason}.",
+            )
+            return
+
+        if state == SafetyState.IDLE.value and previous in (
+            SafetyState.FLOOR.value,
+            SafetyState.FROST.value,
+        ):
+            persistent_notification.async_dismiss(self.hass, notification_id=notification_id)
 
     async def _async_restore_relay(self, room: RoomRuntime) -> None:
         """Safety: a relay left open silently disables the heater (§ 7.1)."""
@@ -298,11 +442,20 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             return MODE_MANUEL
         if self.runtime.fallback_active:
             return MODE_REPLI
-        if not ACTUATION_IMPLEMENTED:
-            return MODE_OBSERVATION
-        if degraded:
+        if OPTIMIZER_ACTUATION and not degraded:
+            return MODE_PILOTAGE
+        if OPTIMIZER_ACTUATION:
             return MODE_DEGRADE
-        return MODE_PILOTAGE
+        if SAFETY_ACTUATION:
+            return MODE_SECURITE
+        return MODE_OBSERVATION
+
+    def _portee(self) -> str:
+        if OPTIMIZER_ACTUATION:
+            return "optimiseur"
+        if SAFETY_ACTUATION:
+            return "securite"
+        return "aucune"
 
     def _actuation_reason(self, auto: bool, degraded: set[str]) -> str:
         """Why no order is being written, in plain language."""
@@ -310,11 +463,13 @@ class ThermOptCoordinator(DataUpdateCoordinator[ThermOptData]):
             return "Mode manuel : ThermOpt n'écrit aucun ordre"
         if self.runtime.fallback_active:
             return "Repli actif : le planning natif pilote le chauffage"
-        if not ACTUATION_IMPLEMENTED:
-            return ACTUATION_REASON
-        if degraded:
+        if not SAFETY_ACTUATION and not OPTIMIZER_ACTUATION:
+            return OBSERVATION_REASON
+        if OPTIMIZER_ACTUATION and degraded:
             return f"Situation dégradée : {', '.join(sorted(degraded))}"
-        return "Pilotage actif"
+        if OPTIMIZER_ACTUATION:
+            return "Pilotage actif"
+        return SAFETY_REASON
 
     def _requested_order(self, room: RoomRuntime) -> Order | None:
         """Order ThermOpt wants, as opposed to what the module actually holds."""

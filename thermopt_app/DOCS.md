@@ -77,11 +77,10 @@ observation, les décisions sont journalisées mais aucun ordre n'est envoyé.
 | `sensor.thermopt_dernier_cycle` | horodatage du dernier cycle |
 | `sensor.thermopt_app` | santé de l'application |
 
-Par pièce : `sensor.<piece>_temperature`, `_consigne_minimale`, `_securite`,
-`_ordre_applique`, `_puissance`.
+Par pièce : `sensor.thermopt_<piece>_temperature`, `_consigne_minimale`,
+`_securite`, `_ordre_applique`, `_puissance`.
 
-Les noms dépendent du nom de la pièce. Utilise **Outils de développement →
-États** pour les identifiers exacts.
+Le nom de la pièce est celui que tu as saisi, mis en minuscules sans accents.
 
 ## Garde-fous
 

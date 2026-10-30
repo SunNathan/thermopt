@@ -168,6 +168,11 @@ class SupervisionLoop:
 
         self.degraded = []
         self.last_cycle = now
+        if self._history.low_disk():
+            free = self._history.free_bytes or 0
+            self.degraded.append(f"espace disque faible : {free // (1024 * 1024)} Mo libres")
+        if self._history.last_error:
+            self.degraded.append(f"écriture de l'historique en échec : {self._history.last_error}")
 
         windows = parse_windows(config.hc_windows)
         price = price_at(now, windows, config.hp_price, config.hc_price)

@@ -23,11 +23,30 @@
     <div class="muted">pièces avec un modèle validé</div>
   </div>
   <div class="card">
-    <h2>Export</h2>
-    <div class="muted">CSV complet, pour analyse hors ligne</div>
-    <div class="actions" style="margin-top:10px">
-      <a href="history/export.csv"><button type="button">Télécharger le CSV</button></a>
+    <h2>Rétention</h2>
+    <div class="value">{{ retention + 1 }} mois</div>
+    <div class="muted">
+      {% if months %}{{ months[0] }} &rarr; {{ months[1] }}{% else %}aucun fichier{% endif %}
     </div>
+    <div class="muted" style="margin-top:6px">
+      {% if free is not none %}
+        {{ (free / 1048576) | round(0) }} Mo libres
+        {% if free < 209715200 %}<span class="ko"> — espace faible</span>{% endif %}
+      {% else %}espace disque inconnu{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <h2>Export</h2>
+    <form method="get" action="history/export.csv">
+      <label>Depuis</label>
+      <input type="date" name="since">
+      <label>Jusqu'au</label>
+      <input type="date" name="until">
+      <div class="actions" style="margin-top:10px">
+        <button type="submit">Télécharger le CSV</button>
+      </div>
+      <div class="muted" style="margin-top:6px">laisser vide pour tout exporter</div>
+    </form>
   </div>
 </div>
 

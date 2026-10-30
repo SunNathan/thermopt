@@ -18,14 +18,14 @@ filterwarnings = ["ignore::DeprecationWarning"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-exclude = ["custom_components/thermopt/translations"]
+exclude = ["lib/thermopt_lib/.*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RET", "PIE"]
 ignore = ["E501", "RET504", "SIM108"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["custom_components", "core", "perception"]
+known-first-party = ["thermopt_lib", "app"]
 
 [tool.mypy]
 python_version = "3.13"

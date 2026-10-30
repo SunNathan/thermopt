@@ -6,6 +6,26 @@ doit toujours correspondre au tag publié.
 
 ## [Unreleased]
 
+### Modifié
+
+- **Dépôt recentré sur l'app.** L'intégration Home Assistant est retirée :
+  `custom_components/`, `manifest.json` et `hacs.json` disparaissent. Le code
+  partagé déménage dans `lib/thermopt_lib/`, le Dockerfile le copie tel quel.
+- La CI ne teste plus que l'app : les jobs hassfest et HACS sont supprimés, et
+  `pytest-homeassistant-custom-component` n'est plus une dépendance (suite de
+  tests 3× plus rapide).
+- `mypy` couvre désormais `lib/thermopt_lib` **et** `thermopt_app/app`.
+- La version ne vit plus qu'à un endroit : `thermopt_app/config.yaml`.
+- Version portée à **0.6.0**.
+
+### Ajouté
+
+- **Rétention de l'historique** : le mois courant et les deux précédents, purgés
+  automatiquement une fois par jour. L'interface affiche la plage conservée.
+- **Surveillance du disque** : espace libre de `/data` vérifié chaque jour,
+  mode dégradé sous 200 Mo, et erreurs d'écriture remontées dans les alertes.
+- **Export CSV borné par deux dates** depuis la page Historique.
+
 ### Corrigé
 
 - **Bascule actif/observation sans effet visible** : le mode affiché provenait

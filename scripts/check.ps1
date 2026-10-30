@@ -11,15 +11,15 @@ if (-not (Test-Path $python)) {
 }
 
 Write-Host "==> ruff check" -ForegroundColor Cyan
-& $ruff check custom_components tests thermopt_app
+& $ruff check lib thermopt_app tests
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host "==> ruff format --check" -ForegroundColor Cyan
-& $ruff format --check custom_components tests thermopt_app
+& $ruff format --check lib thermopt_app tests
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host "==> mypy" -ForegroundColor Cyan
-& $python -m mypy custom_components/thermopt
+& $python -m mypy lib/thermopt_lib thermopt_app/app
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host "==> pytest" -ForegroundColor Cyan

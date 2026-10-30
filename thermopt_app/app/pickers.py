@@ -6,13 +6,21 @@ can be tested without Home Assistant.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Protocol
 
 
 class _State(Protocol):
-    entity_id: str
-    state: str
-    attributes: dict[str, Any]
+    """Structural view of a Home Assistant state, read-only on purpose."""
+
+    @property
+    def entity_id(self) -> str: ...
+
+    @property
+    def state(self) -> str: ...
+
+    @property
+    def attributes(self) -> dict[str, Any]: ...
 
 
 #: Option carried by every 6-order pilot wire module (NodOn SIN-4-FP-21).
@@ -32,7 +40,7 @@ def _label(state: _State) -> str:
 
 
 def _finalise(
-    options: list[tuple[str, str]], states: dict[str, _State], current: str | None
+    options: list[tuple[str, str]], states: Mapping[str, _State], current: str | None
 ) -> list[tuple[str, str]]:
     """Keep the currently configured value even when it does not match."""
     options.sort(key=lambda item: item[1].lower())
@@ -49,7 +57,7 @@ def _finalise(
 
 
 def pick_options(
-    states: dict[str, _State],
+    states: Mapping[str, _State],
     *,
     domain: str,
     device_class: str | None = None,
@@ -75,7 +83,9 @@ def pick_options(
     return _finalise([(state.entity_id, _label(state)) for state in candidates], states, current)
 
 
-def pick_fil_pilote(states: dict[str, _State], current: str | None = None) -> list[tuple[str, str]]:
+def pick_fil_pilote(
+    states: Mapping[str, _State], current: str | None = None
+) -> list[tuple[str, str]]:
     """Only the selects that look like a 6-order pilot wire module."""
     candidates = [
         state
@@ -91,7 +101,7 @@ def pick_fil_pilote(states: dict[str, _State], current: str | None = None) -> li
 
 
 def pick_by_domain(
-    states: dict[str, _State], domain: str, current: str | None = None
+    states: Mapping[str, _State], domain: str, current: str | None = None
 ) -> list[tuple[str, str]]:
     """All entities of a domain (switches, weather, input_boolean…)."""
     return pick_options(states, domain=domain, current=current)

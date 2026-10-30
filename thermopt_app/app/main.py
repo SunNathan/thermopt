@@ -35,6 +35,7 @@ MODEL_PATH = "/data/model.json"
 STARTUP_RETRIES = 10
 STARTUP_DELAY = 6
 HEALTH_INTERVAL = 30
+MAINTENANCE_INTERVAL = 24 * 3600
 
 
 def _configure_logging(level: str) -> None:
@@ -89,6 +90,17 @@ def _timezone(name: str | None):
     return ZoneInfo("UTC")
 
 
+async def _maintenance_loop(history, stop: asyncio.Event) -> None:
+    """Prune old months and watch the disk, once a day."""
+    while not stop.is_set():
+        await asyncio.to_thread(history.prune)
+        await asyncio.to_thread(history.refresh_disk)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=MAINTENANCE_INTERVAL)
+        except TimeoutError:
+            continue
+
+
 async def _health_loop(runtime: WebRuntime, stop: asyncio.Event) -> None:
     """Keep the web page honest even when MQTT drops."""
     while not stop.is_set():
@@ -120,6 +132,7 @@ async def run() -> None:
     mqtt: MqttPublisher | None = None
     loop_task: asyncio.Task | None = None
     health_task: asyncio.Task | None = None
+    maintenance_task: asyncio.Task | None = None
     stop = asyncio.Event()
 
     def _stop(*_: object) -> None:
@@ -178,12 +191,13 @@ async def run() -> None:
 
         loop_task = asyncio.create_task(supervisor_loop.run(stop), name="supervision")
         health_task = asyncio.create_task(_health_loop(runtime, stop), name="health")
+        maintenance_task = asyncio.create_task(_maintenance_loop(history, stop), name="maintenance")
 
         await stop.wait()
 
     finally:
         stop.set()
-        for task in (loop_task, health_task):
+        for task in (loop_task, health_task, maintenance_task):
             if task is not None:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

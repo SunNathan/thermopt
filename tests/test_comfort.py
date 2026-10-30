@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from core.orders import Ladder, Order
-from perception.comfort import (
+from thermopt_lib.core.orders import Ladder, Order
+from thermopt_lib.perception.comfort import (
     SLOT_DAY,
     SLOT_EVENING,
     SLOT_MORNING,

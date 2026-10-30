@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,8 @@ from typing import Any
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_ROOT = Path("/data/history")
+RETENTION_MONTHS = 2  # current month plus the two previous ones
+DISK_MIN_FREE = 200 * 1024 * 1024  # 200 MB
 FIELDS = ("ts", "room", "t_air", "t_ext", "order", "power", "energy", "target_min")
 
 
@@ -33,6 +36,9 @@ class HistoryStore:
 
     def __init__(self, root: Path = DEFAULT_ROOT) -> None:
         self.root = root
+        self.free_bytes: int | None = None
+        self.last_error: str | None = None
+        self.removed: list[str] = []
 
     # -- files ---------------------------------------------------------------
     def files(self) -> list[Path]:
@@ -69,13 +75,20 @@ class HistoryStore:
                     handle.write("\n".join(lines) + "\n")
             except OSError as err:  # pragma: no cover - disk full and friends
                 _LOGGER.error("Écriture historique impossible dans %s : %s", path, err)
+                self.last_error = str(err)
         return count
 
     async def async_append(self, records: Iterable[dict[str, Any]]) -> int:
         return await asyncio.to_thread(self.append, list(records))
 
     # -- reading -------------------------------------------------------------
-    def read(self, *, room: str | None = None, since: datetime | None = None) -> list[dict]:
+    def read(
+        self,
+        *,
+        room: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> list[dict]:
         records: list[dict] = []
         for path in self.files():
             try:
@@ -92,9 +105,13 @@ class HistoryStore:
                             continue
                         if room is not None and record.get("room") != room:
                             continue
-                        if since is not None:
+                        if since is not None or until is not None:
                             stamp = _parse(record.get("ts"))
-                            if stamp is None or stamp < since:
+                            if stamp is None:
+                                continue
+                            if since is not None and stamp < since:
+                                continue
+                            if until is not None and stamp > until:
                                 continue
                         records.append(record)
             except OSError as err:  # pragma: no cover
@@ -103,11 +120,66 @@ class HistoryStore:
         records.sort(key=lambda item: str(item.get("ts")))
         return records
 
-    async def async_read(self, *, room: str | None = None, since: datetime | None = None):
-        return await asyncio.to_thread(self.read, room=room, since=since)
+    async def async_read(
+        self,
+        *,
+        room: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ):
+        return await asyncio.to_thread(self.read, room=room, since=since, until=until)
 
     def size(self) -> int:
         return sum(path.stat().st_size for path in self.files() if path.exists())
+
+    # -- housekeeping --------------------------------------------------------
+    def prune(self, keep: int = RETENTION_MONTHS, now: datetime | None = None) -> list[str]:
+        """Delete monthly files older than ``keep`` months.
+
+        With ``keep=2`` in November, September, October and November survive.
+        """
+        reference = now or datetime.now()
+        cutoff = reference.year * 12 + reference.month - keep
+        removed: list[str] = []
+
+        for path in self.files():
+            try:
+                year, month = (int(part) for part in path.stem.split("-"))
+            except ValueError:
+                continue
+            if year * 12 + month < cutoff:
+                try:
+                    path.unlink()
+                    removed.append(path.name)
+                except OSError as err:  # pragma: no cover
+                    _LOGGER.warning("Purge impossible de %s : %s", path, err)
+
+        self.removed = removed
+        if removed:
+            _LOGGER.info("Historique purgé : %s", ", ".join(removed))
+        return removed
+
+    def refresh_disk(self) -> int | None:
+        """Free space of the volume holding the history, in bytes."""
+        probe = self.root if self.root.exists() else self.root.parent
+        try:
+            self.free_bytes = shutil.disk_usage(probe).free
+        except OSError as err:  # pragma: no cover
+            _LOGGER.warning("Espace disque illisible : %s", err)
+            self.free_bytes = None
+        return self.free_bytes
+
+    def low_disk(self, minimum: int = DISK_MIN_FREE) -> bool:
+        if self.free_bytes is None:
+            self.refresh_disk()
+        return self.free_bytes is not None and self.free_bytes < minimum
+
+    def file_range(self) -> tuple[str, str] | None:
+        """First and last month available, from the filenames only."""
+        names = [path.stem for path in self.files()]
+        if not names:
+            return None
+        return min(names), max(names)
 
 
 def _parse(value: Any) -> datetime | None:

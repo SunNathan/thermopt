@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from core.orders import Order
-from core.safety import (
+from thermopt_lib.core.orders import Order
+from thermopt_lib.core.safety import (
     ABSOLUTE_FLOOR,
     GUARD_MARGIN,
     SafetyState,

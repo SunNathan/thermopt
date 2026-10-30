@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.orders import (
+from thermopt_lib.core.orders import (
     ACTIVE_ORDERS,
     Ladder,
     Order,

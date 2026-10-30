@@ -23,25 +23,18 @@ Cible matérielle : 2 radiateurs Atlantic SOKIO pilotés par 2 modules
 
 ## Contenu du dépôt
 
-Le dépôt porte **deux implémentations** de la même logique :
-
 | Chemin | Rôle |
 |---|---|
-| `custom_components/thermopt/` | **Intégration** (historique, distribuée par HACS) |
-| `thermopt_app/` | **App Home Assistant** (cible à terme, via ingress + MQTT discovery) |
 | `repository.yaml` | Déclare le dépôt comme dépôt d'apps auprès du Supervisor |
-| `custom_components/thermopt/core/` | Ordres, buffer, sécurité, limiteur — Python pur |
-| `custom_components/thermopt/perception/` | Tarif HC/HP, profil de confort, météo, liveness |
-| `custom_components/thermopt/actuators/` | Abstraction fil pilote (driver `select`) |
+| `thermopt_app/` | **L'application** : `config.yaml`, Dockerfile, code, templates |
+| `lib/thermopt_lib/` | Logique pure, sans import Home Assistant (ordres, sécurité, perception) |
 | `blueprints/thermopt/` | Watchdog et planning de repli, à importer par URL |
 | `ha_config/` | Helpers à créer dans l'interface |
 | `docs/spec.md` | Document de cadrage fonctionnel (référence, amendé) |
 | `docs/plan-initialisation.md` | Plan consolidé du jalon 1 |
-| `tests/` | Tests unitaires purs + tests Home Assistant + app |
+| `tests/` | Tests purs et tests de l'application |
 
 ## Installation
-
-### App Home Assistant (cible)
 
 1. **Paramètres → Apps → Installer une app**, puis ⋮ → **Dépôts**.
 2. Ajouter `https://github.com/SunNathan/thermopt`.
@@ -51,21 +44,9 @@ L'app publie ses entités via MQTT discovery (le broker Mosquitto de
 Zigbee2MQTT convient, les identifiants sont fournis par le Supervisor) et ses
 mises à jour passent par le bouton **Mettre à jour** de l'App store.
 
-État actuel : **phase B+C+D+E** — configuration, perception, garde-fous,
-historique persistant, identification du modèle et optimiseur MPC en
+État actuel : **0.6.0** — configuration, perception, garde-fous, historique
+persistant avec rétention, identification du modèle et optimiseur MPC en
 observation.
-
-### Intégration (historique)
-
-Voir **[docs/setup.md](docs/setup.md)**. En résumé, avec HACS (ou le
-Marketplace intégré à Home Assistant 2026.11+) :
-
-1. HACS → ⋮ → *Dépôts personnalisés* → URL de ce dépôt, catégorie **Intégration**.
-2. Télécharger la dernière version, puis redémarrer Home Assistant.
-3. *Paramètres → Appareils et services → Ajouter une intégration → ThermOpt*.
-4. Ajouter chaque pièce via le bouton **Ajouter une entrée** de l'intégration.
-5. Créer les helpers ([ha_config/helpers.md](ha_config/helpers.md)) et importer
-   les deux blueprints.
 
 ## Réglage clé : la consigne Confort
 

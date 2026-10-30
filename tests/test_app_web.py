@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from aiohttp.test_utils import TestClient, TestServer
+
 from app.config import AppConfig, RoomConfig
 from app.web import REDIRECT_HOME, WebRuntime, create_app
 
@@ -67,7 +68,7 @@ async def _client(runtime: WebRuntime) -> TestClient:
     return client
 
 
-async def test_config_save_redirects_relatively(socket_enabled) -> None:
+async def test_config_save_redirects_relatively() -> None:
     client = await _client(_runtime())
     try:
         response = await client.post("/config", data=FORM, allow_redirects=False)
@@ -80,7 +81,7 @@ async def test_config_save_redirects_relatively(socket_enabled) -> None:
         await client.close()
 
 
-async def test_toggle_active_redirects_relatively(socket_enabled) -> None:
+async def test_toggle_active_redirects_relatively() -> None:
     client = await _client(_runtime())
     try:
         response = await client.post("/active", allow_redirects=False)
@@ -92,7 +93,7 @@ async def test_toggle_active_redirects_relatively(socket_enabled) -> None:
         await client.close()
 
 
-async def test_invalid_config_is_refused_without_redirect(socket_enabled) -> None:
+async def test_invalid_config_is_refused_without_redirect() -> None:
     client = await _client(_runtime())
     try:
         broken = dict(FORM)
@@ -105,7 +106,7 @@ async def test_invalid_config_is_refused_without_redirect(socket_enabled) -> Non
         await client.close()
 
 
-async def test_saving_persists_through_the_callback(socket_enabled) -> None:
+async def test_saving_persists_through_the_callback() -> None:
     runtime = _runtime()
     saved: list[AppConfig] = []
     runtime.save_config = saved.append
@@ -120,7 +121,7 @@ async def test_saving_persists_through_the_callback(socket_enabled) -> None:
         await client.close()
 
 
-async def test_home_page_renders(socket_enabled) -> None:
+async def test_home_page_renders() -> None:
     client = await _client(_runtime())
     try:
         response = await client.get("/")
@@ -164,7 +165,7 @@ def test_own_entities_do_not_trigger_the_warning() -> None:
     assert runtime.integration_present is False
 
 
-def test_legacy_signature_is_detected(socket_enabled) -> None:
+def test_legacy_signature_is_detected() -> None:
     from app.ha import EntityState
 
     runtime = _runtime()
@@ -235,7 +236,7 @@ def test_weather_card_handles_a_missing_attribute() -> None:
     assert runtime.weather()["temperature"] is None
 
 
-async def test_optimizer_flag_is_persisted(socket_enabled) -> None:
+async def test_optimizer_flag_is_persisted() -> None:
     runtime = _runtime()
     saved: list = []
     runtime.save_config = saved.append
@@ -251,7 +252,7 @@ async def test_optimizer_flag_is_persisted(socket_enabled) -> None:
         await client.close()
 
 
-async def test_optimizer_is_off_by_default(socket_enabled) -> None:
+async def test_optimizer_is_off_by_default() -> None:
     runtime = _runtime()
     saved: list = []
     runtime.save_config = saved.append
@@ -264,7 +265,7 @@ async def test_optimizer_is_off_by_default(socket_enabled) -> None:
         await client.close()
 
 
-async def test_eco_setpoint_is_persisted(socket_enabled) -> None:
+async def test_eco_setpoint_is_persisted() -> None:
     runtime = _runtime()
     saved: list = []
     runtime.save_config = saved.append
@@ -280,7 +281,7 @@ async def test_eco_setpoint_is_persisted(socket_enabled) -> None:
         await client.close()
 
 
-async def test_empty_eco_means_derived(socket_enabled) -> None:
+async def test_empty_eco_means_derived() -> None:
     runtime = _runtime()
     saved: list = []
     runtime.save_config = saved.append
@@ -338,7 +339,7 @@ class _LoopStub:
         self.cycles += 1
 
 
-async def test_toggle_switches_to_observation_immediately(socket_enabled) -> None:
+async def test_toggle_switches_to_observation_immediately() -> None:
     runtime = _runtime()
     stub = _LoopStub()
     runtime.loop = stub  # type: ignore[assignment]
@@ -358,7 +359,7 @@ async def test_toggle_switches_to_observation_immediately(socket_enabled) -> Non
         await client.close()
 
 
-async def test_home_page_no_longer_shows_the_ha_version(socket_enabled) -> None:
+async def test_home_page_no_longer_shows_the_ha_version() -> None:
     runtime = _runtime()
     runtime.ha_version = "2026.10.7"
     runtime.loop = _LoopStub()  # type: ignore[assignment]

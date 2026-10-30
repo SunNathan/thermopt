@@ -15,15 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Vérifier que le tag correspond au manifest
+      - name: Vérifier que le tag correspond à config.yaml
         run: |
           pip install --quiet pyyaml
           python - <<'PY'
-          import json
           import os
           import sys
           from pathlib import Path
@@ -31,20 +30,11 @@ jobs:
           import yaml
 
           tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
-
-          manifest = json.loads(
-              Path("custom_components/thermopt/manifest.json").read_text(encoding="utf-8")
-          )
           app = yaml.safe_load(Path("thermopt_app/config.yaml").read_text(encoding="utf-8"))
-
-          print(f"tag={tag} manifest={manifest['version']} app={app['version']}")
-
-          for name, version in (
-              ("manifest.json", str(manifest["version"])),
-              ("config.yaml", str(app["version"])),
-          ):
-              if version != tag:
-                  sys.exit(f"{name} ({version}) ne correspond pas au tag ({tag}).")
+          version = str(app["version"])
+          print(f"tag={tag} config.yaml={version}")
+          if tag != version:
+              sys.exit(f"config.yaml ({version}) ne correspond pas au tag ({tag}).")
           PY
 
       - name: Créer la GitHub Release
@@ -53,7 +43,7 @@ jobs:
           generate_release_notes: true
           name: ${{ github.ref_name }}
           body: |
-            Installation : HACS → ThermOpt → Télécharger → redémarrer Home Assistant.
+            Installation : Apps → Dépôts → ce dépôt → installer ThermOpt.
 
-            La version de `custom_components/thermopt/manifest.json` doit rester
-            identique au tag (vérifié par ce workflow).
+            La version de `thermopt_app/config.yaml` doit rester identique au tag
+            (vérifié par ce workflow).

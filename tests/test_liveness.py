@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from perception.liveness import describe, is_frozen, is_missing
+from thermopt_lib.perception.liveness import describe, is_frozen, is_missing
 
 HOUR = 3600.0
 WINDOW = 45 * 60

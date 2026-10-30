@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.ring_buffer import RoomSeries
+from thermopt_lib.core.ring_buffer import RoomSeries
 
 
 def test_append_and_len() -> None:

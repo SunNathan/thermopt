@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -17,13 +18,14 @@ from typing import Any
 
 from aiohttp import web
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 from thermopt_lib.core.orders import LABELS_FR, order_from_z2m
 from thermopt_lib.perception.comfort import SLOT_DAY, SLOT_EVENING, SLOT_MORNING, SLOT_NIGHT
 
 from .audit import audit
 from .config import AppConfig, RoomConfig, ladder_rows, profile_summary, validate
 from .ha import EntityState
-from .history import HistoryStore, to_csv
+from .history import RETENTION_MONTHS, HistoryStore, to_csv
 from .loop import SupervisionLoop
 from .model import ModelParameters
 from .model import fit as fit_model
@@ -68,10 +70,10 @@ class WebRuntime:
         self.mqtt_connected = False
         self.mqtt_detail = "en attente"
         self.healthy = False
-        self.save_config = None  # set by main.py
+        self.save_config: Callable[[AppConfig], None] | None = None
         self.history: HistoryStore | None = None
         self.models: dict[str, ModelParameters] = {}
-        self.save_models = None  # set by main.py
+        self.save_models: Callable[[dict[str, ModelParameters]], None] | None = None
 
     # -- derived values used by the templates --------------------------------
     @property
@@ -139,7 +141,7 @@ class WebRuntime:
                     "temperature": live.state if live else None,
                     "power": power.state if power else None,
                     "order": order.state if order else None,
-                    "order_label": (LABELS_FR.get(order_from_z2m(order.state)) if order else None),
+                    "order_label": _label_for(order.state) if order else None,
                     "safety": runtime.safety.value if runtime else "inactif",
                     "safety_reason": runtime.safety_reason if runtime else "",
                     "target_min": runtime.target_min if runtime else None,
@@ -332,6 +334,8 @@ def create_app(runtime: WebRuntime) -> web.Application:
 
     async def history_page(request: web.Request) -> web.Response:
         _guard(request)
+        if runtime.history is not None:
+            runtime.history.refresh_disk()
         return render(
             "history.html",
             active="history",
@@ -339,6 +343,9 @@ def create_app(runtime: WebRuntime) -> web.Application:
             errors=[],
             message=None,
             size=runtime.history.size() if runtime.history else 0,
+            free=runtime.history.free_bytes if runtime.history else None,
+            months=runtime.history.file_range() if runtime.history else None,
+            retention=RETENTION_MONTHS,
         )
 
     async def history_fit(request: web.Request) -> web.Response:
@@ -375,13 +382,18 @@ def create_app(runtime: WebRuntime) -> web.Application:
             errors=errors,
             message=(f"{len(fitted)} modèle(s) identifié(s)." if fitted else None),
             size=runtime.history.size() if runtime.history else 0,
+            free=runtime.history.free_bytes if runtime.history else None,
+            months=runtime.history.file_range() if runtime.history else None,
+            retention=RETENTION_MONTHS,
         )
 
     async def history_export(request: web.Request) -> web.Response:
         _guard(request)
         if runtime.history is None:
             raise web.HTTPNotFound()
-        records = await runtime.history.async_read()
+        since = _parse_date(request.query.get("since"))
+        until = _parse_date(request.query.get("until"))
+        records = await runtime.history.async_read(since=since, until=until)
         body = to_csv(records)
         return web.Response(
             text=body,
@@ -438,6 +450,23 @@ def _parse_rooms(form) -> tuple[RoomConfig, ...]:
         )
         index += 1
     return tuple(rooms)
+
+
+def _label_for(state: str) -> str | None:
+    """Human label of a fil pilote order read from an entity state."""
+    order = order_from_z2m(state)
+    return LABELS_FR.get(order) if order else None
+
+
+def _parse_date(value: Any) -> datetime | None:
+    """Accept YYYY-MM-DD from an <input type=date>."""
+    text = str(value).strip() if value else ""
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
 
 
 def _optional_number(value: Any) -> float | None:

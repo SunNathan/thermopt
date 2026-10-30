@@ -3,16 +3,11 @@
 Objectif : **publier depuis le PC, mettre à jour depuis l'interface de Home
 Assistant**, sans SSH ni ligne de commande côté Raspberry Pi.
 
-## 1. Dépôt GitHub
+## 1. Le dépôt
 
-Le dépôt doit être **public** pour être utilisé sans jeton GitHub. Il est déjà
-configuré pour le compte `SunNathan` :
-
-- `custom_components/thermopt/manifest.json` (`codeowners`, `documentation`, `issue_tracker`)
-- `blueprints/thermopt/*.yaml` (`source_url`)
-
-Si le compte change, ces références sont à mettre à jour en même temps que le
-`git remote`.
+Le dépôt est un **dépôt d'apps** : `repository.yaml` à la racine, une app dans
+`thermopt_app/`. Il doit être **public** pour que le Supervisor puisse cloner et
+que l'image soit tirable.
 
 Créer le dépôt distant puis :
 
@@ -21,109 +16,85 @@ git remote add origin https://github.com/SunNathan/thermopt.git
 git push -u origin main
 ```
 
-### Métadonnées exigées par la validation HACS
-
-Trois éléments ne vivent pas dans le code et se règlent sur GitHub
-(*Settings* du dépôt) : sans eux, le job « Validation HACS » reste rouge.
+### Métadonnées du dépôt (recommandées)
 
 | Élément | Où | Valeur suggérée |
 |---|---|---|
 | Description | *Settings → General → Description* | « Pilotage optimal du chauffage fil pilote dans Home Assistant » |
-| Topics | *Settings → General → Topics* | `home-assistant`, `homeassistant`, `hacs`, `custom-integration`, `heating`, `climate`, `energy` |
-| Licence | fichier `LICENSE` | déjà présent (MIT) |
+| Topics | *Settings → General → Topics* | `home-assistant`, `addon`, `heating`, `climate`, `energy` |
+| Licence | fichier `LICENSE` | MIT |
 
-En ligne de commande, avec un jeton personnel (`repo` scope) :
+### L'image ghcr doit être publique
 
-```bash
-curl -X PATCH https://api.github.com/repos/SunNathan/thermopt \
-  -H "Authorization: Bearer $GH_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  -d '{"description":"Pilotage optimal du chauffage fil pilote dans Home Assistant","topics":["home-assistant","homeassistant","hacs","custom-integration","heating","climate","energy"]}'
-```
+Le Supervisor tire `ghcr.io/sunnathan/thermopt:<version>` sans identifiants. Un
+package GitHub est **privé par défaut** : après le premier build, passer le
+package en *Public* depuis ses réglages. Sinon l'installation échoue avec une
+erreur de tirage.
 
 ## 2. Flux de publication
 
 ```
-main ──► CI (ruff + mypy + pytest + hassfest + validation HACS)
+main ──► CI (ruff + mypy + pytest)
    │
-   └──► tag v0.2.0 ──► GitHub Release ──► HACS détecte la mise à jour
+   └──► tag v0.6.0 ──► GitHub Release + image multi-arch
 ```
 
 ### Publier une version
 
-1. Mettre à jour `"version"` dans `custom_components/thermopt/manifest.json`.
-2. Mettre à jour `CHANGELOG.md` (facultatif, `generate_release_notes` le fait).
-3. Committer, puis :
+1. Mettre à jour `version` dans `thermopt_app/config.yaml`.
+2. Committer.
+3. `git tag v0.6.0 && git push origin main --tags`.
 
-```bash
-git tag v0.2.0
-git push origin main --tags
-```
-
-Le workflow `release.yml` vérifie que le tag correspond à `manifest.version`
-et crée la release. Si les deux divergent, il échoue : c'est volontaire, HACS
-se base sur cette version pour proposer la mise à jour.
+Le workflow `build-app.yaml` vérifie que le tag correspond à `config.yaml` puis
+construit et publie `ghcr.io/sunnathan/thermopt:0.6.0` pour **amd64 et arm64**.
+`release.yml` crée la release GitHub.
 
 ### Mettre à jour depuis Home Assistant
 
-*Paramètres → Mises à jour* affiche **ThermOpt** dès qu'une release plus
-récente existe → **Installer** → Home Assistant redémarre (ou affiche
-« Redémarrage requis »). Pour revenir en arrière, HACS permet de retélécharger
-une version antérieure.
-
-Contraintes assumées :
-- un redémarrage de Home Assistant est nécessaire (le code du composant est
-  chargé au démarrage) ;
-- une version = un tag = une release. Pas de « pull » instantané.
+*Paramètres → Apps → ThermOpt → Mettre à jour*, puis redémarrer l'app. Pas de
+redémarrage de Home Assistant. Pour revenir en arrière, réinstaller une version
+antérieure depuis l'App store.
 
 ## 3. Boucle de développement
 
 ### Côté PC (privilégié)
 
-`core/` et `perception/` sont du Python pur : on itère avec `pytest`, sans
-Home Assistant. C'est là que se fait l'essentiel du travail (modèle, MPC,
-garde-fous) et c'est ce qui garantit le critère « cycle < 100 ms ».
+`lib/thermopt_lib` et `thermopt_app/app` ne dépendent pas de Home Assistant :
+on itère avec pytest, sans conteneur ni broker.
 
 ```bash
-pytest -q
+.\scripts\check.ps1     # ruff + format + mypy + pytest, comme la CI
 ```
 
-Les tests `tests/test_init.py` chargent une vraie instance Home Assistant en
-mémoire (via `pytest-homeassistant-custom-component`) : ils valident le config
-flow, la création des entités et les garde-fous.
+Les tests web ouvrent un vrai serveur aiohttp local : ils vérifient les
+redirections relatives, la sauvegarde de configuration et le rendu des pages.
 
 ### Côté Pi (ponctuel)
 
-Pour itérer sur le câblage Home Assistant sans publier de release, monter le
-partage Samba du Pi sur le PC et cloner le dépôt **dans un dossier séparé**,
-puis copier `custom_components/thermopt` à la main et redémarrer.
-
-**Ne jamais** cumuler un clone git et une installation HACS dans le même
-dossier `custom_components/thermopt` : HACS perdrait la main sur les mises à
-jour.
+Pour tester une modification sans publier de release, on peut reconstruire
+l'image localement et la pousser avec un tag de préversion, puis choisir cette
+version dans l'App store. Plus simple encore : passer par un tag `vX.Y.Z-dev`
+et revenir ensuite à la version stable.
 
 ## 4. Intégration continue
 
 `.github/workflows/ci.yml` exécute à chaque push et chaque pull request :
 
-| Job | Contenu |
+| Étape | Contenu |
 |---|---|
-| `quality` | `ruff check`, `ruff format --check`, `mypy`, `pytest` |
-| `hassfest` | validation du manifest et des traductions par Home Assistant |
-| `hacs` | validation de la structure du dépôt pour HACS |
+| `ruff check` | lint sur `lib`, `thermopt_app`, `tests` |
+| `ruff format --check` | formatage |
+| `mypy` | typage de `lib/thermopt_lib` et `thermopt_app/app` |
+| `pytest` | 191 tests |
 
-Pour ne pas découvrir un run rouge après coup, `scripts/check.ps1` exécute les
-quatre mêmes commandes que le job `quality` en local.
-
-`.github/workflows/release.yml` s'exécute sur un tag `v*` :
-cohérence tag ↔ `manifest.version`, puis création de la GitHub Release.
+`.github/workflows/build-app.yaml` construit l'image à chaque tag et publie
+`ghcr.io/sunnathan/thermopt`.
 
 ## 5. Bonnes pratiques
 
-- Ne jamais committer `secrets.yaml`, `.storage/`, les bases `*.db` (déjà dans
-  `.gitignore`).
-- Prix de l'énergie, plages HC et profil de confort vivent dans les **options
-  de l'intégration**, pas dans le code : une révision tarifaire ne demande
-  aucune release.
-- Après chaque mise à jour, vérifier `sensor.thermopt_statut` et
-  `binary_sensor.thermopt_mode_degrade` pendant quelques minutes.
+- Ne jamais committer de secret : la configuration vit dans `/data/config.json`
+  du conteneur, sauvegardé avec les backups de l'app.
+- Prix de l'énergie, plages HC et profil de confort se règlent dans l'interface,
+  pas dans le code : une révision tarifaire ne demande aucune release.
+- Après chaque mise à jour, vérifier le mode affiché, la carte Météo et le
+  dernier cycle.

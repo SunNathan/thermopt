@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import numpy as np
+
 from app.audit import MIN_DAYS, audit
 from app.model import build_series, fit, predict, simulate
 

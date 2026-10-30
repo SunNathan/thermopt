@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from custom_components.thermopt.core.orders import Ladder, Order
-from custom_components.thermopt.perception.comfort import ComfortProfile
-from custom_components.thermopt.reporting import (
+from thermopt_lib.core.orders import Ladder, Order
+from thermopt_lib.perception.comfort import ComfortProfile
+from thermopt_lib.reporting import (
     describe_profile_issue,
     describe_reason,
     fmt,
@@ -56,14 +56,14 @@ def test_profile_reason_uses_the_issue_when_available() -> None:
 
 def test_default_ladder_is_consistent() -> None:
     """The recommended setpoint must not produce any degradation."""
-    from perception.comfort import profile_issues
+    from thermopt_lib.perception.comfort import profile_issues
 
     ladder = Ladder(comfort=20.5)
     assert profile_issues(ComfortProfile(), ladder, ladder.setpoint(Order.ECO)) == []
 
 
 def test_default_profile_with_20_degrees_is_flagged() -> None:
-    from perception.comfort import profile_issues
+    from thermopt_lib.perception.comfort import profile_issues
 
     ladder = Ladder(comfort=20.0)
     issues = profile_issues(ComfortProfile(), ladder, ladder.setpoint(Order.ECO))

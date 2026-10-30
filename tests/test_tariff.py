@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from perception.tariff import (
+from thermopt_lib.perception.tariff import (
     InvalidWindow,
     Window,
     format_windows,

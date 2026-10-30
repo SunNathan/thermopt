@@ -102,9 +102,12 @@ Onglet **Historique** :
 - chaque cycle écrit un échantillon dans `/data/history/`, un fichier JSONL par
   mois (température, extérieure, ordre, puissance, énergie, consigne du
   moment) ;
-- la page montre les jours couverts, les trous, le **temps passé par ordre** et
-  le nombre de périodes de refroidissement ;
-- **Télécharger le CSV** exporte tout, pour analyse hors ligne.
+- **rétention de 2 mois glissants** : le mois courant et les deux précédents,
+  purgés automatiquement une fois par jour ;
+- la page montre les jours couverts, les trous, le **temps passé par ordre**,
+  le nombre de périodes de refroidissement, l'espace disque libre et la plage
+  de mois conservée ;
+- **Télécharger le CSV**, éventuellement borné par deux dates.
 
 **Identifier le modèle** applique les seuils du cadrage : au moins 14 jours,
 au moins 2 ordres utilisés 20 h chacun, au moins 10 périodes de refroidissement

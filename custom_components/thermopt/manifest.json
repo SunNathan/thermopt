@@ -2,6 +2,7 @@
   "domain": "thermopt",
   "name": "ThermOpt",
   "codeowners": ["@SunNathan"],
+  "categories": ["climate", "energy"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/SunNathan/thermopt",

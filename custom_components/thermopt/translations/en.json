@@ -51,6 +51,10 @@
   "config_subentries": {
     "room": {
       "entry_type": "Room",
+      "initiate_flow": {
+        "user": "Add a room",
+        "reconfigure": "Reconfigure the room"
+      },
       "step": {
         "user": {
           "title": "ThermOpt — Room",

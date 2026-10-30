@@ -85,25 +85,24 @@ def order_from_z2m(value: str | None) -> Order | None:
 
 @dataclass(frozen=True, slots=True)
 class Ladder:
-    """Setpoint ladder derived from the heater's Comfort setting.
+    """Setpoint ladder derived from the heater's settings.
 
-    The heater exposes only its Comfort setpoint ``C`` as an absolute value;
-    every other order is a fixed offset from it::
-
-        Confort   C
-        Confort-1 C - 1
-        Confort-2 C - 2
-        Eco       C - 3.5
-        Hors-gel  frost (independent)
+    Only Comfort and frost protection are absolute values on the heater;
+    Comfort−1 and Comfort−2 are protocol offsets. Eco is *usually* Comfort
+    minus 3.5 °C, but many heaters let it be set independently — pass ``eco``
+    to override the derived value.
     """
 
     comfort: float = 20.5
     frost: float = 7.0
+    eco: float | None = None
 
     def setpoint(self, order: Order) -> float:
         """Effective setpoint (°C) produced by ``order``."""
         if order is Order.FROST:
             return self.frost
+        if order is Order.ECO and self.eco is not None:
+            return round(float(self.eco), 2)
         return round(self.comfort + OFFSETS[order], 2)
 
     def setpoints(self) -> dict[Order, float]:

@@ -40,6 +40,13 @@ def describe_profile_issue(issue: str, ladder) -> str:
     comfort = ladder.comfort
 
     if kind == "eco_below_floor":
+        if ladder.eco is not None:
+            return (
+                f"Eco ({fmt(eco)} °C) est plus froid que ta borne de confort "
+                f"({fmt(target)} °C). Le garde-fou forcerait Confort chaque nuit. "
+                f"Augmente la consigne Eco du radiateur à {fmt(target)} °C, "
+                f"ou abaisse la cible de nuit à {fmt(eco)} °C."
+            )
         return (
             f"Eco ({fmt(eco)} °C) est plus froid que ta borne de confort "
             f"({fmt(target)} °C). Le garde-fou forcerait Confort chaque nuit. "

@@ -43,7 +43,8 @@ Ouvre l'application (bouton **Ouvrir l'interface web**), onglet
 2. Renseigne l'entité météo, les prix HP/HC et les plages Heures Creuses —
    **relève-les sur ton Linky**, ils varient par point de livraison.
 3. Règle la **consigne Confort** sur la valeur réellement programmée sur le
-   radiateur. Toute l'échelle d'ordres en découle : avec 20,5 °C, Eco vaut
+   radiateur, et la **consigne Eco** si ton radiateur a une valeur d'écart
+   personnalisée (laisse vide pour Eco = Confort − 3,5). Toute l'échelle d'ordres en découle : avec 20,5 °C, Eco vaut
    17,0 °C et Confort−1 vaut 19,5 °C. Avec 20 °C, Eco vaut 16,5 °C et le
    garde-fou se déclenchera chaque nuit.
 4. Ajuste le profil de confort si besoin, puis **Enregistre**.

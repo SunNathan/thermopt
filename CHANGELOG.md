@@ -8,6 +8,15 @@ doit toujours correspondre au tag publié.
 
 ### Ajouté
 
+- **Consigne Eco indépendante** : Eco n'est plus forcément Confort − 3,5.
+  Le champ *Consigne Eco* de la configuration accepte une valeur absolue
+  (celle réglée sur le radiateur) ; vide, il retombe sur l'ancien calcul.
+  Confort−1 et Confort−2 restent des offsets du protocole.
+  La validation exige Hors-gel < Eco < Confort, et le message d'alerte cite
+  désormais Eco quand il est explicite.
+
+### Ajouté
+
 - **Phase E : optimiseur MPC.**
   - plan de 24 h au pas de 15 min, minimisant `prix × puissance + λ × écart²`
     sous contraintes (un changement par 30 min, jamais sous 7 °C) ;

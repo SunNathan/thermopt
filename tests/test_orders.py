@@ -100,3 +100,25 @@ def test_z2m_mapping() -> None:
 def test_active_orders_exclude_frost() -> None:
     assert Order.FROST not in ACTIVE_ORDERS
     assert len(ACTIVE_ORDERS) == 4
+
+
+def test_explicit_eco_setpoint_wins() -> None:
+    """Eco is often set on the heater itself, not derived from Comfort."""
+    ladder = Ladder(comfort=20.5, frost=7.0, eco=17.5)
+
+    assert ladder.setpoint(Order.ECO) == 17.5
+    # The protocol offsets are unchanged.
+    assert ladder.setpoint(Order.COMFORT_1) == 19.5
+    assert ladder.setpoint(Order.COMFORT_2) == 18.5
+
+
+def test_eco_falls_back_to_the_offset() -> None:
+    ladder = Ladder(comfort=20.5)
+    assert ladder.eco is None
+    assert ladder.setpoint(Order.ECO) == 17.0
+
+
+def test_nearest_with_explicit_eco() -> None:
+    ladder = Ladder(comfort=20.5, eco=17.5)
+    assert ladder.nearest(17.6) is Order.ECO
+    assert ladder.nearest(18.4) is Order.COMFORT_2

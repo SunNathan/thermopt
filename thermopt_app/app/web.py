@@ -436,6 +436,17 @@ def _parse_rooms(form) -> tuple[RoomConfig, ...]:
     return tuple(rooms)
 
 
+def _optional_number(value: Any) -> float | None:
+    """Empty field means "derive it from Comfort"."""
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def _clean(value: Any) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
@@ -462,6 +473,7 @@ def _apply_form(base: AppConfig, form, rooms: tuple[RoomConfig, ...]) -> AppConf
         hc_windows=str(form.get("hc_windows", base.hc_windows)),
         comfort_setpoint=number("comfort_setpoint", base.comfort_setpoint),
         frost_setpoint=number("frost_setpoint", base.frost_setpoint),
+        eco_setpoint=_optional_number(form.get("eco_setpoint")),
         active=form.get("active") == "on",
         optimizer_active=form.get("optimizer_active") == "on",
         starts=starts,

@@ -68,3 +68,13 @@ def test_default_profile_with_20_degrees_is_flagged() -> None:
     ladder = Ladder(comfort=20.0)
     issues = profile_issues(ComfortProfile(), ladder, ladder.setpoint(Order.ECO))
     assert issues == ["eco_below_floor:17.0"]
+
+
+def test_message_mentions_eco_when_it_is_explicit() -> None:
+    """With an absolute Eco, changing Comfort would not move Eco: say so."""
+    ladder = Ladder(comfort=20.5, eco=16.5)
+    message = describe_profile_issue("eco_below_floor:17.0", ladder)
+
+    assert "Eco" in message
+    assert "17,0" in message
+    assert "Confort du radiateur" not in message

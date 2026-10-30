@@ -45,6 +45,16 @@ def _as_float(value: Any, default: float) -> float:
         return default
 
 
+def _optional_float(value: Any) -> float | None:
+    """Empty, missing or invalid means "derive it"."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class RoomConfig:
     """One heated room."""
@@ -101,6 +111,7 @@ class AppConfig:
     hc_windows: str = DEFAULT_HC_WINDOWS
     comfort_setpoint: float = DEFAULT_COMFORT_SETPOINT
     frost_setpoint: float = DEFAULT_FROST_SETPOINT
+    eco_setpoint: float | None = None
     active: bool = True
     starts: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_STARTS))
     weekday: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_WEEKDAY))
@@ -114,7 +125,11 @@ class AppConfig:
     # -- derived -------------------------------------------------------------
     @property
     def ladder(self) -> Ladder:
-        return Ladder(comfort=self.comfort_setpoint, frost=self.frost_setpoint)
+        return Ladder(
+            comfort=self.comfort_setpoint,
+            frost=self.frost_setpoint,
+            eco=self.eco_setpoint,
+        )
 
     @property
     def profile(self) -> ComfortProfile:
@@ -154,6 +169,7 @@ class AppConfig:
             "hc_windows": self.hc_windows,
             "comfort_setpoint": self.comfort_setpoint,
             "frost_setpoint": self.frost_setpoint,
+            "eco_setpoint": self.eco_setpoint,
             "active": self.active,
             "starts": self.starts,
             "weekday": self.weekday,
@@ -181,6 +197,7 @@ class AppConfig:
             hc_windows=str(data.get("hc_windows") or DEFAULT_HC_WINDOWS),
             comfort_setpoint=_as_float(data.get("comfort_setpoint"), DEFAULT_COMFORT_SETPOINT),
             frost_setpoint=_as_float(data.get("frost_setpoint"), DEFAULT_FROST_SETPOINT),
+            eco_setpoint=_optional_float(data.get("eco_setpoint")),
             active=bool(data.get("active", True)),
             starts={**DEFAULT_STARTS, **(data.get("starts") or {})},
             weekday={**DEFAULT_WEEKDAY, **(data.get("weekday") or {})},
@@ -227,6 +244,13 @@ def validate(config: AppConfig) -> list[str]:
         errors.append("La consigne Hors-gel doit être comprise entre 5 et 12 °C.")
     if not 15 <= config.comfort_setpoint <= 25:
         errors.append("La consigne Confort doit être comprise entre 15 et 25 °C.")
+    if config.eco_setpoint is not None and not (
+        config.frost_setpoint < config.eco_setpoint < config.comfort_setpoint
+    ):
+        errors.append(
+            "La consigne Eco doit être strictement comprise entre le Hors-gel "
+            "et la consigne Confort."
+        )
     if config.hp_price <= 0 or config.hc_price <= 0:
         errors.append("Les prix doivent être strictement positifs.")
 

@@ -262,3 +262,52 @@ async def test_optimizer_is_off_by_default(socket_enabled) -> None:
         assert saved and saved[0].optimizer_active is False
     finally:
         await client.close()
+
+
+async def test_eco_setpoint_is_persisted(socket_enabled) -> None:
+    runtime = _runtime()
+    saved: list = []
+    runtime.save_config = saved.append
+
+    client = await _client(runtime)
+    try:
+        payload = dict(FORM)
+        payload["eco_setpoint"] = "17.5"
+        await client.post("/config", data=payload, allow_redirects=False)
+
+        assert saved and saved[0].eco_setpoint == 17.5
+    finally:
+        await client.close()
+
+
+async def test_empty_eco_means_derived(socket_enabled) -> None:
+    runtime = _runtime()
+    saved: list = []
+    runtime.save_config = saved.append
+
+    client = await _client(runtime)
+    try:
+        payload = dict(FORM)
+        payload["eco_setpoint"] = ""
+        await client.post("/config", data=payload, allow_redirects=False)
+
+        assert saved and saved[0].eco_setpoint is None
+    finally:
+        await client.close()
+
+
+def test_eco_must_sit_between_frost_and_comfort() -> None:
+    from app.config import validate
+
+    config = AppConfig(
+        rooms=(
+            RoomConfig(id="a", name="Salon", temp_entity="sensor.t", fil_pilote_entity="select.f"),
+        ),
+    )
+    assert validate(config) == []
+
+    too_high = replace(config, eco_setpoint=20.5)
+    assert any("Eco" in error for error in validate(too_high))
+
+    too_low = replace(config, eco_setpoint=6.0)
+    assert any("Eco" in error for error in validate(too_low))

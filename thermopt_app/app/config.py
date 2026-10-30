@@ -108,6 +108,7 @@ class AppConfig:
     present_day: float = DEFAULT_PRESENT_DAY
     tolerance: float = DEFAULT_TOLERANCE
     high_margin: float = DEFAULT_HIGH_MARGIN
+    supervisor_ack: bool = False
 
     # -- derived -------------------------------------------------------------
     @property
@@ -159,6 +160,7 @@ class AppConfig:
             "present_day": self.present_day,
             "tolerance": self.tolerance,
             "high_margin": self.high_margin,
+            "supervisor_ack": self.supervisor_ack,
         }
 
     @classmethod
@@ -184,6 +186,7 @@ class AppConfig:
             present_day=_as_float(data.get("present_day"), DEFAULT_PRESENT_DAY),
             tolerance=_as_float(data.get("tolerance"), DEFAULT_TOLERANCE),
             high_margin=_as_float(data.get("high_margin"), DEFAULT_HIGH_MARGIN),
+            supervisor_ack=bool(data.get("supervisor_ack", False)),
         )
 
 

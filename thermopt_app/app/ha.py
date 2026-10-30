@@ -111,26 +111,50 @@ class HaClient:
             "/core/api/services/weather/get_forecasts?return_response=true",
             {"entity_id": entity_id, "type": "hourly"},
         )
-        service = payload.get(entity_id) if isinstance(payload, dict) else None
-        forecast = service.get("forecast") if isinstance(service, dict) else None
-        if not isinstance(forecast, list):
-            raise SupervisorError("empty forecast")
-
-        points: list[tuple[float, float]] = []
-        for item in forecast:
-            if not isinstance(item, dict):
-                continue
-            stamp = item.get("datetime")
-            temperature = item.get("temperature")
-            if not isinstance(stamp, str) or not isinstance(temperature, int | float):
-                continue
-            parsed = _parse_iso(stamp)
-            if parsed is not None:
-                points.append((parsed, float(temperature)))
-
+        points = extract_forecast(payload, entity_id)
         if not points:
-            raise SupervisorError("empty forecast")
+            raise SupervisorError("prévision vide ou illisible")
         return points
+
+
+def extract_forecast(payload: object, entity_id: str) -> list[tuple[float, float]]:
+    """Read the forecast out of a REST service response.
+
+    Home Assistant wraps the payload of a ``return_response`` call::
+
+        {"changed_states": [...],
+         "service_response": {"weather.x": {"forecast": [...]}}}
+
+    The unwrapped form is accepted too, so the parser survives either shape.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    inner = payload.get("service_response", payload)
+    if not isinstance(inner, dict):
+        return []
+
+    service = inner.get(entity_id)
+    if not isinstance(service, dict):
+        return []
+
+    forecast = service.get("forecast")
+    if not isinstance(forecast, list):
+        return []
+
+    points: list[tuple[float, float]] = []
+    for item in forecast:
+        if not isinstance(item, dict):
+            continue
+        stamp = item.get("datetime")
+        temperature = item.get("temperature")
+        if not isinstance(stamp, str) or not isinstance(temperature, int | float):
+            continue
+        parsed = _parse_iso(stamp)
+        if parsed is not None:
+            points.append((parsed, float(temperature)))
+
+    return points
 
 
 def _parse_iso(value: str) -> float | None:

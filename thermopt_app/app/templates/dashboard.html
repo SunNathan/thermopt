@@ -8,12 +8,15 @@
   L'application calcule mais n'écrit rien. Désactive l'automatisation de repli et remets ce helper à
   <code>off</code> pour reprendre la main.
 </div>
-{% elif runtime.integration_present %}
+{% elif markers %}
 <div class="banner warn">
   <strong>Deux superviseurs détectés.</strong>
-  Des entités <code>sensor.thermopt_*</code> existent déjà dans Home Assistant : l'ancienne intégration
-  est encore installée. Désinstalle-la avant de passer l'application en mode actif, sinon deux boucles
-  piloteront le même radiateur.
+  Ces entités existent encore et ne peuvent venir que de l'ancienne intégration :
+  <ul class="errors">{% for marker in markers %}<li><code>{{ marker }}</code></li>{% endfor %}</ul>
+  Désinstalle-la avant de passer en mode actif, sinon deux boucles piloteront le même radiateur.
+  <form method="post" action="ack" style="margin-top:10px">
+    <button type="submit">Ignorer cet avertissement</button>
+  </form>
 </div>
 {% endif %}
 
@@ -45,6 +48,24 @@
     <h2>Home Assistant</h2>
     <div class="value">{{ runtime.ha_version }}</div>
     <div class="muted">{{ runtime.ha_location or "—" }}</div>
+  </div>
+
+  <div class="card">
+    <h2>Météo</h2>
+    <div class="value">{{ weather.temperature if weather.temperature is not none else "—" }} °C</div>
+    <div class="muted">
+      {% if weather.entity %}<code>{{ weather.entity }}</code>{% else %}aucune entité configurée{% endif %}
+      {% if weather.state %} · {{ weather.state }}{% endif %}
+    </div>
+    <div class="muted" style="margin-top:6px">
+      {% if weather.forecast_error %}
+        <span class="ko">prévision : {{ weather.forecast_error }}</span>
+      {% elif weather.forecast_count %}
+        prévision : {{ weather.forecast_count }} points horaires
+      {% else %}
+        prévision : en attente
+      {% endif %}
+    </div>
   </div>
 
   <div class="card">

@@ -7,6 +7,8 @@ of the app's.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from aiohttp.test_utils import TestClient, TestServer
 from app.config import AppConfig, RoomConfig
 from app.web import REDIRECT_HOME, WebRuntime, create_app
@@ -134,3 +136,100 @@ def test_redirect_target_is_relative() -> None:
     """Cheap guard: the constant itself must never become absolute."""
     assert REDIRECT_HOME == "./"
     assert not REDIRECT_HOME.startswith("/")
+
+
+# ---------------------------------------------------------------------------
+# Supervisor detection
+# ---------------------------------------------------------------------------
+def _app_owned_states() -> dict:
+    from app.ha import EntityState
+
+    return {
+        "sensor.thermopt_statut": EntityState("sensor.thermopt_statut", "actif", {}),
+        "sensor.thermopt_prix_actuel": EntityState("sensor.thermopt_prix_actuel", "0.2", {}),
+        "sensor.thermopt_dernier_cycle": EntityState(
+            "sensor.thermopt_dernier_cycle", "2026-01-01", {}
+        ),
+        "sensor.thermopt_salon_temperature": EntityState(
+            "sensor.thermopt_salon_temperature", "21", {}
+        ),
+    }
+
+
+def test_own_entities_do_not_trigger_the_warning() -> None:
+    """The app used to detect itself: it publishes sensor.thermopt_* too."""
+    runtime = _runtime()
+    runtime.states = _app_owned_states()
+    assert runtime.supervisor_markers == []
+    assert runtime.integration_present is False
+
+
+def test_legacy_signature_is_detected(socket_enabled) -> None:
+    from app.ha import EntityState
+
+    runtime = _runtime()
+    runtime.states = {
+        **_app_owned_states(),
+        "sensor.thermopt_prochain_cycle": EntityState(
+            "sensor.thermopt_prochain_cycle", "2026-01-01", {}
+        ),
+    }
+    assert runtime.integration_present is True
+
+
+def test_unavailable_orphan_is_ignored() -> None:
+    from app.ha import EntityState
+
+    runtime = _runtime()
+    runtime.states = {
+        **_app_owned_states(),
+        "sensor.thermopt_prochain_cycle": EntityState(
+            "sensor.thermopt_prochain_cycle", "unavailable", {}
+        ),
+    }
+    assert runtime.supervisor_markers == []
+    assert runtime.integration_present is False
+
+
+def test_acknowledgement_hides_the_warning() -> None:
+    from app.ha import EntityState
+
+    runtime = _runtime()
+    runtime.states = {
+        **_app_owned_states(),
+        "sensor.thermopt_pieces": EntityState("sensor.thermopt_pieces", "1", {}),
+    }
+    assert runtime.integration_present is True
+
+    runtime.config = replace(runtime.config, supervisor_ack=True)
+    assert runtime.integration_present is False
+
+
+# ---------------------------------------------------------------------------
+# Weather card
+# ---------------------------------------------------------------------------
+def test_weather_card_reads_the_current_temperature() -> None:
+    from app.ha import EntityState
+
+    runtime = _runtime()
+    runtime.config = replace(runtime.config, weather_entity="weather.home")
+    runtime.states = {
+        "weather.home": EntityState(
+            "weather.home", "cloudy", {"temperature": 6.4, "friendly_name": "Météo"}
+        )
+    }
+
+    card = runtime.weather()
+    assert card["entity"] == "weather.home"
+    assert card["state"] == "cloudy"
+    assert card["temperature"] == 6.4
+
+
+def test_weather_card_handles_a_missing_attribute() -> None:
+    from app.ha import EntityState
+
+    runtime = _runtime()
+    runtime.config = replace(runtime.config, weather_entity="weather.home")
+    runtime.states = {"weather.home": EntityState("weather.home", "sunny", {})}
+
+    assert runtime.weather()["temperature"] is None

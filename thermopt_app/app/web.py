@@ -43,6 +43,15 @@ SLOT_LABELS = {
 }
 SLOTS = (SLOT_NIGHT, SLOT_MORNING, SLOT_DAY, SLOT_EVENING)
 
+#: Entities created by the legacy integration, never by this app.
+INTEGRATION_SIGNATURE = (
+    "sensor.thermopt_prochain_cycle",
+    "sensor.thermopt_temperature_exterieure",
+    "sensor.thermopt_pieces",
+    "binary_sensor.thermopt_pilotage_actif",
+    "button.thermopt_generer_la_vue",
+)
+
 
 class WebRuntime:
     """State shared between the loop, the publisher and the pages."""
@@ -70,8 +79,46 @@ class WebRuntime:
         return state is not None and state.state.lower() == "on"
 
     @property
+    def outdoor_temperature(self) -> float | None:
+        """Current outdoor temperature, straight from the weather entity."""
+        entity = self.config.weather_entity
+        if not entity:
+            return None
+        state = self.states.get(entity)
+        if state is None:
+            return None
+        raw = state.attributes.get("temperature")
+        try:
+            return float(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+
+    def weather(self) -> dict[str, Any]:
+        """Everything the dashboard weather card shows — current state only."""
+        entity = self.config.weather_entity
+        state = self.states.get(entity) if entity else None
+        loop = self.loop
+        return {
+            "entity": entity,
+            "state": state.state if state else None,
+            "temperature": self.outdoor_temperature,
+            "forecast_count": loop.forecast_count if loop else 0,
+            "forecast_error": loop.forecast_error if loop else None,
+        }
+
+    @property
+    def supervisor_markers(self) -> list[str]:
+        """Entities only the legacy integration creates, and still available."""
+        markers: list[str] = []
+        for entity_id in INTEGRATION_SIGNATURE:
+            state = self.states.get(entity_id)
+            if state is not None and state.available:
+                markers.append(entity_id)
+        return markers
+
+    @property
     def integration_present(self) -> bool:
-        return any(key.startswith("sensor.thermopt_") for key in self.states)
+        return bool(self.supervisor_markers) and not self.config.supervisor_ack
 
     def rooms(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -130,7 +177,16 @@ def create_app(runtime: WebRuntime) -> web.Application:
             cycle=runtime.loop.last_cycle if runtime.loop else None,
             degraded=runtime.loop.degraded if runtime.loop else [],
             mode=runtime.loop.mode if runtime.loop else "observation",
+            weather=runtime.weather(),
+            markers=runtime.supervisor_markers,
         )
+
+    async def acknowledge(request: web.Request) -> web.Response:
+        _guard(request)
+        runtime.config = replace(runtime.config, supervisor_ack=True)
+        if runtime.save_config is not None:
+            runtime.save_config(runtime.config)
+        raise web.HTTPFound(REDIRECT_HOME)
 
     async def config_page(request: web.Request) -> web.Response:
         _guard(request)
@@ -327,6 +383,7 @@ def create_app(runtime: WebRuntime) -> web.Application:
     app.router.add_get("/config", config_page)
     app.router.add_post("/config", config_save)
     app.router.add_post("/active", toggle_active)
+    app.router.add_post("/ack", acknowledge)
     app.router.add_get("/history", history_page)
     app.router.add_post("/history/fit", history_fit)
     app.router.add_get("/history/export.csv", history_export)

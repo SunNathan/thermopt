@@ -8,6 +8,22 @@ doit toujours correspondre au tag publié.
 
 ### Corrigé
 
+- **Faux positif « Deux superviseurs détectés »** : la détection cherchait
+  n'importe quelle entité `sensor.thermopt_*`, donc elle se déclenchait sur les
+  entités publiées par l'app elle-même. Elle repose désormais sur une liste
+  d'entités que seule l'ancienne intégration créait, ignore les entités
+  indisponibles, et un bouton permet d'acquitter l'avertissement.
+- **« Météo indisponible » systématique** : la réponse d'un appel de service
+  REST avec `return_response` est enveloppée dans `service_response` ; elle
+  était lue à la racine, donc toujours vide. La température extérieure n'était
+  jamais enregistrée dans l'historique, ce qui rendait les échantillons
+  inutilisables pour l'identification.
+- Carte **Météo** sur le tableau de bord : entité configurée, état, température
+  actuelle, et une ligne indiquant le nombre de points de prévision ou l'erreur
+  exacte.
+
+### Corrigé
+
 - **Redirection après enregistrement** : `Location: /` renvoyait vers l'accueil
   de Home Assistant, puisque l'app est servie sous
   `/api/hassio_ingress/<token>/`. Les redirections sont désormais relatives

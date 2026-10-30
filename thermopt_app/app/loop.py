@@ -100,6 +100,8 @@ class SupervisionLoop:
         self.mode = "observation"
         self._pending_records: list[dict] = []
         self.last_snapshot: Snapshot | None = None
+        self.forecast_count = 0
+        self.forecast_error: str | None = None
 
     # -- configuration -------------------------------------------------------
     def apply_config(self, config: AppConfig) -> None:
@@ -380,12 +382,15 @@ class SupervisionLoop:
         try:
             self._forecast = await self._ha.hourly_forecast(entity)
             self._forecast_at = now
+            self.forecast_count = len(self._forecast)
+            self.forecast_error = None
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Météo indisponible : %s", err)
+            self.forecast_error = str(err)
             self.degraded.append(
-                "météo indisponible : dernière valeur conservée"
-                if self._forecast
-                else "météo indisponible"
+                f"météo indisponible : {err}"
+                if not self._forecast
+                else f"météo indisponible : {err} (dernière prévision conservée)"
             )
 
     @property

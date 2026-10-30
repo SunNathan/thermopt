@@ -30,10 +30,10 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: Ruff (lint)
-        run: ruff check custom_components tests
+        run: ruff check custom_components tests thermopt_app
 
       - name: Ruff (format)
-        run: ruff format --check custom_components tests
+        run: ruff format --check custom_components tests thermopt_app
 
       - name: mypy
         run: mypy custom_components/thermopt

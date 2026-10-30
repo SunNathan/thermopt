@@ -8,6 +8,24 @@ doit toujours correspondre au tag publié.
 
 ### Ajouté
 
+- **Squelette d'app Home Assistant** (phase A) : `repository.yaml`,
+  `thermopt_app/config.yaml`, Dockerfile, page d'administration via `ingress`,
+  endpoint `/health` pour le watchdog, publication MQTT discovery d'un capteur
+  de santé, client du proxy Supervisor.
+- Workflow `build-app.yaml` : image multi-arch (amd64 + arm64) publiée sur
+  `ghcr.io/sunnathan/thermopt`, avec vérification tag ↔ `config.yaml`.
+- Le workflow de release vérifie désormais `manifest.json` **et**
+  `config.yaml` contre le tag.
+- Les modules purs (`core`, `perception`) restent la source unique, destinés à
+  être copiés dans l'image aux phases suivantes.
+
+### Modifié
+
+- Version portée à **0.2.0** (intégration et app), pour cohérence entre les
+  deux artefacts.
+
+### Sécurité, entités et tableau de bord
+
 - `sensor.thermopt_pieces` : nombre de pièces, et attribut `rooms` (température,
   consignes, ordre demandé/appliqué, source, sécurité) — permet un tableau de
   bord sans coder en dur les `entity_id`.

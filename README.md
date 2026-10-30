@@ -23,19 +23,38 @@ Cible matérielle : 2 radiateurs Atlantic SOKIO pilotés par 2 modules
 
 ## Contenu du dépôt
 
+Le dépôt porte **deux implémentations** de la même logique :
+
 | Chemin | Rôle |
 |---|---|
-| `custom_components/thermopt/` | L'intégration (seul dossier déployé par HACS) |
-| `custom_components/thermopt/core/` | Modèle, ordres, buffer, limiteur — Python pur, sans Home Assistant |
+| `custom_components/thermopt/` | **Intégration** (historique, distribuée par HACS) |
+| `thermopt_app/` | **App Home Assistant** (cible à terme, via ingress + MQTT discovery) |
+| `repository.yaml` | Déclare le dépôt comme dépôt d'apps auprès du Supervisor |
+| `custom_components/thermopt/core/` | Ordres, buffer, sécurité, limiteur — Python pur |
 | `custom_components/thermopt/perception/` | Tarif HC/HP, profil de confort, météo, liveness |
 | `custom_components/thermopt/actuators/` | Abstraction fil pilote (driver `select`) |
 | `blueprints/thermopt/` | Watchdog et planning de repli, à importer par URL |
 | `ha_config/` | Helpers à créer dans l'interface |
 | `docs/spec.md` | Document de cadrage fonctionnel (référence, amendé) |
 | `docs/plan-initialisation.md` | Plan consolidé du jalon 1 |
-| `tests/` | Tests unitaires purs + tests Home Assistant |
+| `tests/` | Tests unitaires purs + tests Home Assistant + app |
 
 ## Installation
+
+### App Home Assistant (cible)
+
+1. **Paramètres → Apps → Installer une app**, puis ⋮ → **Dépôts**.
+2. Ajouter `https://github.com/SunNathan/thermopt`.
+3. Installer **ThermOpt**, démarrer, puis **Ouvrir l'interface web**.
+
+L'app publie ses entités via MQTT discovery (le broker Mosquitto de
+Zigbee2MQTT convient, les identifiants sont fournis par le Supervisor) et ses
+mises à jour passent par le bouton **Mettre à jour** de l'App store.
+
+État actuel : **phase A** — squelette installable, page d'administration, capteur
+de santé. Les garde-fous et l'optimisation arrivent aux phases suivantes.
+
+### Intégration (historique)
 
 Voir **[docs/setup.md](docs/setup.md)**. En résumé, avec HACS (ou le
 Marketplace intégré à Home Assistant 2026.11+) :

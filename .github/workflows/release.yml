@@ -21,23 +21,30 @@ jobs:
 
       - name: Vérifier que le tag correspond au manifest
         run: |
+          pip install --quiet pyyaml
           python - <<'PY'
           import json
           import os
           import sys
           from pathlib import Path
 
+          import yaml
+
           tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+
           manifest = json.loads(
               Path("custom_components/thermopt/manifest.json").read_text(encoding="utf-8")
           )
-          version = manifest["version"]
-          print(f"tag={tag} manifest={version}")
-          if tag != version:
-              sys.exit(
-                  "Le tag et manifest.json divergent : "
-                  f"{tag} != {version}. Bump la version du manifest."
-              )
+          app = yaml.safe_load(Path("thermopt_app/config.yaml").read_text(encoding="utf-8"))
+
+          print(f"tag={tag} manifest={manifest['version']} app={app['version']}")
+
+          for name, version in (
+              ("manifest.json", str(manifest["version"])),
+              ("config.yaml", str(app["version"])),
+          ):
+              if version != tag:
+                  sys.exit(f"{name} ({version}) ne correspond pas au tag ({tag}).")
           PY
 
       - name: Créer la GitHub Release

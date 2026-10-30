@@ -23,8 +23,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION_DIR = ROOT / "custom_components" / "thermopt"
+APP_DIR = ROOT / "thermopt_app"
 
-for path in (str(ROOT), str(INTEGRATION_DIR)):
+for path in (str(ROOT), str(INTEGRATION_DIR), str(APP_DIR)):
     if path not in sys.path:
         sys.path.insert(0, path)
 

@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publier la release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Vérifier que le tag correspond au manifest
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          manifest = json.loads(
+              Path("custom_components/thermopt/manifest.json").read_text(encoding="utf-8")
+          )
+          version = manifest["version"]
+          print(f"tag={tag} manifest={version}")
+          if tag != version:
+              sys.exit(
+                  "Le tag et manifest.json divergent : "
+                  f"{tag} != {version}. Bump la version du manifest."
+              )
+          PY
+
+      - name: Créer la GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+          body: |
+            Installation : HACS → ThermOpt → Télécharger → redémarrer Home Assistant.
+
+            La version de `custom_components/thermopt/manifest.json` doit rester
+            identique au tag (vérifié par ce workflow).

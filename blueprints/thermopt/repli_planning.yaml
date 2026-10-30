@@ -1,0 +1,160 @@
+blueprint:
+  name: ThermOpt — Planning de repli (par pièce)
+  description: >-
+    Applique un planning fil pilote simple et conservateur, indépendant de
+    l'intégration ThermOpt. À instancier une fois par pièce, avec le select
+    fil pilote brut (Zigbee2MQTT). Ne fait rien tant que le helper « repli
+    actif » est à off.
+  domain: automation
+  author: ThermOpt
+  source_url: https://github.com/SunNathan/thermopt
+  input:
+    fil_pilote_entity:
+      name: Entité fil pilote (select)
+      description: select.xxx_pilot_wire_mode exposée par Zigbee2MQTT
+      selector:
+        entity:
+          domain: select
+    fallback_entity:
+      name: Helper « repli actif »
+      selector:
+        entity:
+          domain: input_boolean
+    night_start:
+      name: Début nuit
+      default: "23:00:00"
+      selector:
+        time:
+    morning_start:
+      name: Début matin
+      default: "06:30:00"
+      selector:
+        time:
+    morning_end:
+      name: Fin matin
+      default: "08:30:00"
+      selector:
+        time:
+    evening_start:
+      name: Début soirée
+      default: "17:30:00"
+      selector:
+        time:
+    evening_end:
+      name: Fin soirée
+      default: "22:00:00"
+      selector:
+        time:
+    hc_start:
+      name: Début Heures Creuses
+      default: "22:00:00"
+      selector:
+        time:
+    hc_end:
+      name: Fin Heures Creuses
+      default: "06:00:00"
+      selector:
+        time:
+    order_comfort:
+      name: Ordre « Confort »
+      default: comfort
+      selector:
+        select:
+          options:
+            - comfort
+            - comfort_-1
+            - comfort_-2
+            - eco
+            - frost_protection
+    order_occupied:
+      name: Ordre « occupé »
+      default: comfort_-1
+      selector:
+        select:
+          options:
+            - comfort
+            - comfort_-1
+            - comfort_-2
+            - eco
+            - frost_protection
+    order_idle:
+      name: Ordre « inoccupé / nuit »
+      default: eco
+      selector:
+        select:
+          options:
+            - comfort
+            - comfort_-1
+            - comfort_-2
+            - eco
+            - frost_protection
+
+mode: single
+max_exceeded: silent
+
+variables:
+  target_entity: !input fil_pilote_entity
+  night_start: !input night_start
+  morning_start: !input morning_start
+  morning_end: !input morning_end
+  evening_start: !input evening_start
+  evening_end: !input evening_end
+  hc_start: !input hc_start
+  hc_end: !input hc_end
+  order_comfort: !input order_comfort
+  order_occupied: !input order_occupied
+  order_idle: !input order_idle
+
+trigger:
+  - platform: time_pattern
+    minutes: /15
+  - platform: state
+    entity_id: !input fallback_entity
+    to: "on"
+
+condition:
+  - condition: state
+    entity_id: !input fallback_entity
+    state: "on"
+
+action:
+  - variables:
+      now_time: "{{ now().strftime('%H:%M:%S') }}"
+      in_night: >-
+        {{ now_time >= night_start or now_time < morning_start }}
+      in_morning: >-
+        {{ now_time >= morning_start and now_time < morning_end }}
+      in_evening: >-
+        {{ now_time >= evening_start and now_time < evening_end }}
+      in_hc: >-
+        {% set s = hc_start %}
+        {% set e = hc_end %}
+        {% if s <= e %}
+          {{ now_time >= s and now_time < e }}
+        {% else %}
+          {{ now_time >= s or now_time < e }}
+        {% endif %}
+      target_order: >-
+        {% if in_night %}
+          {{ order_idle }}
+        {% elif in_hc and (in_morning or in_evening) %}
+          {{ order_comfort }}
+        {% elif in_hc %}
+          {{ order_idle }}
+        {% elif in_morning or in_evening %}
+          {{ order_occupied }}
+        {% else %}
+          {{ order_idle }}
+        {% endif %}
+  - condition: template
+    value_template: "{{ states(target_entity) != target_order }}"
+  - service: select.select_option
+    target:
+      entity_id: !input fil_pilote_entity
+    data:
+      option: "{{ target_order }}"
+  - service: logbook.log
+    data:
+      name: ThermOpt repli
+      message: "Ordre de repli appliqué : {{ target_order }}"
+      entity_id: !input fil_pilote_entity

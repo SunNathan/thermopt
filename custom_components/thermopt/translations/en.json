@@ -1,0 +1,137 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ThermOpt — System",
+        "description": "Weather, off-peak tariff and fil pilote settings.\n\nComfort setpoint: the value configured on the radiator. Every other order is derived from it (Comfort-1, Comfort-2, Eco = C-3.5). 20.5 °C makes Eco land on 17.0 °C and Comfort-1 on 19.5 °C.",
+        "data": {
+          "weather_entity": "Weather entity",
+          "auto_entity": "Auto/manual switch",
+          "presence_entity": "Continuous presence (telework)",
+          "hc_binary_entity": "Real off-peak signal (optional)",
+          "hp_price": "Peak price",
+          "hc_price": "Off-peak price",
+          "hc_windows": "Off-peak windows (HH:MM-HH:MM, comma separated)",
+          "comfort_setpoint": "Radiator Comfort setpoint",
+          "frost_setpoint": "Radiator frost protection setpoint"
+        }
+      },
+      "comfort": {
+        "title": "ThermOpt — Comfort profile",
+        "description": "Desired lower bounds per slot. The night slot starts in the evening and ends at the first morning slot.",
+        "data": {
+          "start_night": "Night start",
+          "start_morning": "Morning start",
+          "start_day": "Day start",
+          "start_evening": "Evening start",
+          "t_min_night_weekday": "Night — weekday",
+          "t_min_morning_weekday": "Morning — weekday",
+          "t_min_day_weekday": "Day — weekday",
+          "t_min_evening_weekday": "Evening — weekday",
+          "t_min_night_weekend": "Night — weekend",
+          "t_min_morning_weekend": "Morning — weekend",
+          "t_min_day_weekend": "Day — weekend",
+          "t_min_evening_weekend": "Evening — weekend",
+          "t_min_present_day": "Day — telework",
+          "tolerance": "Tolerance",
+          "high_margin": "Upper margin (anti-overheat)"
+        }
+      }
+    },
+    "error": {
+      "invalid_windows": "Expected format: 22:00-06:00, 12:00-14:00",
+      "frost_too_high": "Frost setpoint must be at least 5 °C below the Comfort setpoint",
+      "invalid_time": "Invalid time, expected HH:MM",
+      "duplicate_slot": "Two slots cannot start at the same time"
+    },
+    "abort": {
+      "already_configured": "ThermOpt is already configured"
+    }
+  },
+  "config_subentries": {
+    "room": {
+      "step": {
+        "user": {
+          "title": "ThermOpt — Room",
+          "description": "Pick the fil pilote module entities and the room sensors.",
+          "data": {
+            "name": "Room name",
+            "temp_entity": "Temperature sensor",
+            "humidity_entity": "Humidity sensor",
+            "fil_pilote_entity": "Fil pilote entity (select)",
+            "relay_entity": "Module relay (switch)",
+            "power_entity": "Measured power",
+            "energy_entity": "Cumulative energy",
+            "nominal_power": "Radiator nominal power",
+            "surface": "Surface",
+            "volume": "Volume"
+          }
+        },
+        "reconfigure": {
+          "title": "ThermOpt — Edit room",
+          "data": {
+            "name": "Room name",
+            "temp_entity": "Temperature sensor",
+            "humidity_entity": "Humidity sensor",
+            "fil_pilote_entity": "Fil pilote entity (select)",
+            "relay_entity": "Module relay (switch)",
+            "power_entity": "Measured power",
+            "energy_entity": "Cumulative energy",
+            "nominal_power": "Radiator nominal power",
+            "surface": "Surface",
+            "volume": "Volume"
+          }
+        }
+      },
+      "error": {
+        "name_required": "Room name is required",
+        "actuator_required": "Select the room's fil pilote entity"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ThermOpt — System",
+        "description": "Change weather, tariff or fil pilote setpoints.",
+        "data": {
+          "weather_entity": "Weather entity",
+          "auto_entity": "Auto/manual switch",
+          "presence_entity": "Continuous presence (telework)",
+          "hc_binary_entity": "Real off-peak signal (optional)",
+          "hp_price": "Peak price",
+          "hc_price": "Off-peak price",
+          "hc_windows": "Off-peak windows (HH:MM-HH:MM)",
+          "comfort_setpoint": "Radiator Comfort setpoint",
+          "frost_setpoint": "Radiator frost protection setpoint"
+        }
+      },
+      "comfort": {
+        "title": "ThermOpt — Comfort profile",
+        "data": {
+          "start_night": "Night start",
+          "start_morning": "Morning start",
+          "start_day": "Day start",
+          "start_evening": "Evening start",
+          "t_min_night_weekday": "Night — weekday",
+          "t_min_morning_weekday": "Morning — weekday",
+          "t_min_day_weekday": "Day — weekday",
+          "t_min_evening_weekday": "Evening — weekday",
+          "t_min_night_weekend": "Night — weekend",
+          "t_min_morning_weekend": "Morning — weekend",
+          "t_min_day_weekend": "Day — weekend",
+          "t_min_evening_weekend": "Evening — weekend",
+          "t_min_present_day": "Day — telework",
+          "tolerance": "Tolerance",
+          "high_margin": "Upper margin (anti-overheat)"
+        }
+      }
+    },
+    "error": {
+      "invalid_windows": "Expected format: 22:00-06:00, 12:00-14:00",
+      "frost_too_high": "Frost setpoint must be at least 5 °C below the Comfort setpoint",
+      "invalid_time": "Invalid time, expected HH:MM",
+      "duplicate_slot": "Two slots cannot start at the same time"
+    }
+  }
+}

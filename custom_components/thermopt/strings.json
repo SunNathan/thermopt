@@ -1,0 +1,137 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ThermOpt — Système",
+        "description": "Météo, tarif Heures Creuses / Heures Pleines et paramètres du fil pilote.\n\nConsigne Confort : valeur réglée sur le radiateur. Les autres ordres en sont dérivés (Confort-1, Confort-2, Eco = C-3,5). 20,5 °C fait tomber Eco sur 17,0 °C et Confort-1 sur 19,5 °C.",
+        "data": {
+          "weather_entity": "Entité météo",
+          "auto_entity": "Interrupteur auto/manuel",
+          "presence_entity": "Présence continue (télétravail)",
+          "hc_binary_entity": "Signal HC réel (optionnel)",
+          "hp_price": "Prix Heures Pleines",
+          "hc_price": "Prix Heures Creuses",
+          "hc_windows": "Plages Heures Creuses (HH:MM-HH:MM, séparées par des virgules)",
+          "comfort_setpoint": "Consigne Confort du radiateur",
+          "frost_setpoint": "Consigne Hors-gel du radiateur"
+        }
+      },
+      "comfort": {
+        "title": "ThermOpt — Profil de confort",
+        "description": "Bornes basses souhaitées par créneau. Le créneau « nuit » démarre le soir et se termine au premier créneau du matin.",
+        "data": {
+          "start_night": "Début nuit",
+          "start_morning": "Début matin",
+          "start_day": "Début journée",
+          "start_evening": "Début soirée",
+          "t_min_night_weekday": "Nuit — semaine",
+          "t_min_morning_weekday": "Matin — semaine",
+          "t_min_day_weekday": "Journée — semaine",
+          "t_min_evening_weekday": "Soirée — semaine",
+          "t_min_night_weekend": "Nuit — week-end",
+          "t_min_morning_weekend": "Matin — week-end",
+          "t_min_day_weekend": "Journée — week-end",
+          "t_min_evening_weekend": "Soirée — week-end",
+          "t_min_present_day": "Journée — télétravail",
+          "tolerance": "Tolérance",
+          "high_margin": "Marge haute (anti-surchauffe)"
+        }
+      }
+    },
+    "error": {
+      "invalid_windows": "Format attendu : 22:00-06:00, 12:00-14:00",
+      "frost_too_high": "La consigne Hors-gel doit être au moins 5 °C sous la consigne Confort",
+      "invalid_time": "Heure invalide, format attendu HH:MM",
+      "duplicate_slot": "Deux créneaux ne peuvent pas démarrer à la même heure"
+    },
+    "abort": {
+      "already_configured": "ThermOpt est déjà configuré"
+    }
+  },
+  "config_subentries": {
+    "room": {
+      "step": {
+        "user": {
+          "title": "ThermOpt — Pièce",
+          "description": "Renseigne les entités du module fil pilote NodOn et les capteurs de la pièce.",
+          "data": {
+            "name": "Nom de la pièce",
+            "temp_entity": "Capteur de température",
+            "humidity_entity": "Capteur d'humidité",
+            "fil_pilote_entity": "Entité fil pilote (select)",
+            "relay_entity": "Relais du module (switch)",
+            "power_entity": "Puissance mesurée",
+            "energy_entity": "Énergie cumulée",
+            "nominal_power": "Puissance nominale du radiateur",
+            "surface": "Surface",
+            "volume": "Volume"
+          }
+        },
+        "reconfigure": {
+          "title": "ThermOpt — Modifier la pièce",
+          "data": {
+            "name": "Nom de la pièce",
+            "temp_entity": "Capteur de température",
+            "humidity_entity": "Capteur d'humidité",
+            "fil_pilote_entity": "Entité fil pilote (select)",
+            "relay_entity": "Relais du module (switch)",
+            "power_entity": "Puissance mesurée",
+            "energy_entity": "Énergie cumulée",
+            "nominal_power": "Puissance nominale du radiateur",
+            "surface": "Surface",
+            "volume": "Volume"
+          }
+        }
+      },
+      "error": {
+        "name_required": "Le nom de la pièce est obligatoire",
+        "actuator_required": "Sélectionne l'entité fil pilote de la pièce"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ThermOpt — Système",
+        "description": "Modifie la météo, le tarif ou les consignes du fil pilote.",
+        "data": {
+          "weather_entity": "Entité météo",
+          "auto_entity": "Interrupteur auto/manuel",
+          "presence_entity": "Présence continue (télétravail)",
+          "hc_binary_entity": "Signal HC réel (optionnel)",
+          "hp_price": "Prix Heures Pleines",
+          "hc_price": "Prix Heures Creuses",
+          "hc_windows": "Plages Heures Creuses (HH:MM-HH:MM)",
+          "comfort_setpoint": "Consigne Confort du radiateur",
+          "frost_setpoint": "Consigne Hors-gel du radiateur"
+        }
+      },
+      "comfort": {
+        "title": "ThermOpt — Profil de confort",
+        "data": {
+          "start_night": "Début nuit",
+          "start_morning": "Début matin",
+          "start_day": "Début journée",
+          "start_evening": "Début soirée",
+          "t_min_night_weekday": "Nuit — semaine",
+          "t_min_morning_weekday": "Matin — semaine",
+          "t_min_day_weekday": "Journée — semaine",
+          "t_min_evening_weekday": "Soirée — semaine",
+          "t_min_night_weekend": "Nuit — week-end",
+          "t_min_morning_weekend": "Matin — week-end",
+          "t_min_day_weekend": "Journée — week-end",
+          "t_min_evening_weekend": "Soirée — week-end",
+          "t_min_present_day": "Journée — télétravail",
+          "tolerance": "Tolérance",
+          "high_margin": "Marge haute (anti-surchauffe)"
+        }
+      }
+    },
+    "error": {
+      "invalid_windows": "Format attendu : 22:00-06:00, 12:00-14:00",
+      "frost_too_high": "La consigne Hors-gel doit être au moins 5 °C sous la consigne Confort",
+      "invalid_time": "Heure invalide, format attendu HH:MM",
+      "duplicate_slot": "Deux créneaux ne peuvent pas démarrer à la même heure"
+    }
+  }
+}

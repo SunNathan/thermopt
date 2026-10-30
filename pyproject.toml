@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thermopt"
+version = "0.1.0"
+description = "Home Assistant integration optimising a pilot-wire heater with an RC model and MPC"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = ["custom_components/thermopt/translations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RET", "PIE"]
+ignore = ["E501", "RET504", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components", "core", "perception"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = ["tests/"]
+
+[tool.coverage.run]
+source = ["custom_components/thermopt"]

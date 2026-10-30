@@ -1,0 +1,85 @@
+# ThermOpt
+
+Supervision du chauffage fil pilote pour Home Assistant : modèle thermique
+RC 2R2C, filtre de Kalman et optimiseur MPC, avec garde-fous de confort et
+repli natif.
+
+Cible matérielle : 2 radiateurs Atlantic SOKIO pilotés par 2 modules
+**NodOn SIN-4-FP-21** en Zigbee2MQTT, sur un Raspberry Pi.
+
+> **État actuel : jalon 1.** L'intégration s'installe, observe, calcule les
+> bornes de confort et détecte les situations dégradées. **Elle n'applique
+> encore aucun ordre fil pilote.** Seul le planning de repli natif agit, et
+> uniquement en cas de panne.
+
+## Contenu du dépôt
+
+| Chemin | Rôle |
+|---|---|
+| `custom_components/thermopt/` | L'intégration (seul dossier déployé par HACS) |
+| `custom_components/thermopt/core/` | Modèle, ordres, buffer, limiteur — Python pur, sans Home Assistant |
+| `custom_components/thermopt/perception/` | Tarif HC/HP, profil de confort, météo, liveness |
+| `custom_components/thermopt/actuators/` | Abstraction fil pilote (driver `select`) |
+| `blueprints/thermopt/` | Watchdog et planning de repli, à importer par URL |
+| `ha_config/` | Helpers à créer dans l'interface |
+| `docs/spec.md` | Document de cadrage fonctionnel (référence, amendé) |
+| `docs/plan-initialisation.md` | Plan consolidé du jalon 1 |
+| `tests/` | Tests unitaires purs + tests Home Assistant |
+
+## Installation
+
+Voir **[docs/setup.md](docs/setup.md)**. En résumé, avec HACS (ou le
+Marketplace intégré à Home Assistant 2026.11+) :
+
+1. HACS → ⋮ → *Dépôts personnalisés* → URL de ce dépôt, catégorie **Intégration**.
+2. Télécharger la dernière version, puis redémarrer Home Assistant.
+3. *Paramètres → Appareils et services → Ajouter une intégration → ThermOpt*.
+4. Ajouter chaque pièce via le bouton **Ajouter une entrée** de l'intégration.
+5. Créer les helpers ([ha_config/helpers.md](ha_config/helpers.md)) et importer
+   les deux blueprints.
+
+## Réglage clé : la consigne Confort
+
+Le fil pilote ne choisit pas une température, il choisit un échelon. Seule la
+consigne **Confort** du radiateur est réglable ; tout le reste en découle :
+
+| `C` (réglé sur le radiateur) | Confort | Confort−1 | Confort−2 | Eco | Hors-gel |
+|---|---|---|---|---|---|
+| 20,0 °C (déconseillé) | 20,0 | 19,0 | 18,0 | 16,5 | 7,0 |
+| **20,5 °C (recommandé)** | **20,5** | **19,5** | **18,5** | **17,0** | **7,0** |
+
+Avec 20,5 °C, les cibles du profil de confort (17 °C la nuit, 19,5 °C en
+occupation) tombent exactement sur Eco et Confort−1, et le garde-fou de
+confort ne se déclenche plus à tort chaque nuit.
+
+Toute modification de cette consigne sur le radiateur doit être répercutée
+dans les options de l'intégration.
+
+## Entités créées
+
+- `sensor.thermopt_statut` — état du superviseur (collecte, manuel, repli…)
+- `sensor.thermopt_dernier_cycle` / `prochain_cycle` — battement de cœur (base du watchdog)
+- `sensor.thermopt_prix_actuel`, `sensor.thermopt_temperature_exterieure`
+- `binary_sensor.thermopt_mode_degrade`, `binary_sensor.thermopt_heures_creuses`
+- par pièce : température, humidité, consignes min/max, créneau, ordre fil
+  pilote, puissance, énergie, problème, et un switch de supervision
+- deux boutons de diagnostic (forcer un cycle, dumper l'état)
+
+## Développement
+
+```bash
+python -m venv .venv
+.venv/Scripts/activate           # Windows
+pip install -r requirements_dev.txt
+pytest -q                        # tests purs + tests Home Assistant
+ruff check custom_components tests
+ruff format custom_components tests
+```
+
+Les tests Home Assistant utilisent `pytest-homeassistant-custom-component`
+(qui impose la version de Home Assistant testée). Sur Windows, deux modules
+Unix manquent au harnais : voir les commentaires de `tests/conftest.py`.
+
+## Licence
+
+MIT.

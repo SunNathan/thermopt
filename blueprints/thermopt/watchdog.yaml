@@ -1,0 +1,113 @@
+blueprint:
+  name: ThermOpt — Watchdog du superviseur (repli)
+  description: >-
+    Surveille le battement de cœur de ThermOpt et active le mode repli si
+    l'intégration ne tourne plus (crash, redémarrage bloqué, capteur mort).
+    Cette automatisation est volontairement indépendante de l'intégration :
+    elle ne lit que des entités d'état et un helper.
+  domain: automation
+  author: ThermOpt
+  source_url: https://github.com/SunNathan/thermopt
+  input:
+    heartbeat_entity:
+      name: Battement de cœur ThermOpt
+      description: Généralement sensor.thermopt_dernier_cycle
+      selector:
+        entity:
+          domain: sensor
+    auto_entity:
+      name: Interrupteur auto/manuel
+      selector:
+        entity:
+          domain: input_boolean
+    fallback_entity:
+      name: Helper « repli actif »
+      selector:
+        entity:
+          domain: input_boolean
+    max_age_minutes:
+      name: Âge maximum du dernier cycle
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: minutes
+          mode: box
+
+mode: single
+max_exceeded: silent
+
+variables:
+  heartbeat: !input heartbeat_entity
+  auto_helper: !input auto_entity
+  fallback_helper: !input fallback_entity
+  max_age: !input max_age_minutes
+
+trigger:
+  - platform: time_pattern
+    minutes: /10
+  - platform: state
+    entity_id: !input heartbeat_entity
+    to: "unavailable"
+    for:
+      minutes: 10
+  - platform: state
+    entity_id: !input auto_entity
+    to: "on"
+
+condition:
+  - condition: state
+    entity_id: !input auto_entity
+    state: "on"
+
+action:
+  - variables:
+      age_min: >-
+        {{ ((as_timestamp(now()) - as_timestamp(states(heartbeat), now()))
+            / 60) | round(0) }}
+      is_stale: >-
+        {{ (as_timestamp(now()) - as_timestamp(states(heartbeat), 0) | float(0))
+           / 60 > max_age }}
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ is_stale }}"
+        sequence:
+          - if:
+              - condition: state
+                entity_id: !input fallback_entity
+                state: "off"
+            then:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: !input fallback_entity
+              - service: persistent_notification.create
+                data:
+                  title: ThermOpt — repli activé
+                  notification_id: thermopt_watchdog
+                  message: >-
+                    Aucun cycle ThermOpt depuis {{ age_min }} minutes
+                    (seuil : {{ max_age }} min). Le planning de repli prend le
+                    relais. Vérifie les journaux de l'intégration ThermOpt.
+              - service: logbook.log
+                data:
+                  name: ThermOpt
+                  message: >-
+                    Watchdog : heartbeat périmé ({{ age_min }} min), repli activé.
+                  entity_id: !input heartbeat_entity
+      - conditions:
+          - condition: state
+            entity_id: !input fallback_entity
+            state: "on"
+        sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: !input fallback_entity
+          - service: persistent_notification.dismiss
+            data:
+              notification_id: thermopt_watchdog
+          - service: logbook.log
+            data:
+              name: ThermOpt
+              message: Watchdog : heartbeat revenu, repli désactivé.

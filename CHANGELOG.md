@@ -8,7 +8,29 @@ doit toujours correspondre au tag publié.
 
 ### Ajouté
 
-- **Phase B de l'app : configuration, perception et sécurité.**
+- **Phase C : collecte persistante et audit.**
+  - historique en JSONL append-only dans `/data/history/`, un fichier par mois ;
+  - onglet **Historique** : jours couverts, trous, temps par ordre, puissance
+    moyenne par ordre, périodes de refroidissement ;
+  - export CSV complet ;
+  - audit bloquant selon les seuils du cadrage (14 jours, 2 ordres × 20 h,
+    10 périodes de refroidissement).
+- **Phase D : identification du modèle thermique.**
+  - ARX d'ordre 2 identifié par moindres carrés (numpy), sans optimiseur
+    non linéaire ;
+  - validation par simulation libre de 12 h, **rejet au-delà de 0,5 °C** ;
+  - déperditions équivalentes, constantes de temps et gain extérieur dérivés ;
+  - `P_rad` estimée par la puissance mesurée, par ordre ;
+  - paramètres dans `/data/model.json` ;
+  - `sensor.thermopt_<piece>_temperature_prevue_12h`.
+
+### Modifié
+
+- Version portée à **0.4.0** (intégration et app).
+- Ajout de `numpy` à l'image de l'app (légitime dans un conteneur).
+
+### Sécurité, entités et tableau de bord
+
   - interface web complète sous `ingress` (pièces, tarifs, profil de confort,
     consigne Confort), formulaires HTML sans JavaScript, listes d'entités
     proposées par domaine ;

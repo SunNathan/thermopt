@@ -13,11 +13,14 @@ import logging
 import os
 import platform
 import signal
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import AppConfig
 from .ha import HaClient
+from .history import HistoryStore
 from .loop import SupervisionLoop
+from .model import ModelParameters
 from .mqtt import MqttPublisher
 from .options import Options
 from .publish import Publisher
@@ -28,6 +31,7 @@ from .web import WebRuntime, start_site
 _LOGGER = logging.getLogger(__name__)
 
 VERSION = os.environ.get("THERMOPT_VERSION", "dev")
+MODEL_PATH = "/data/model.json"
 STARTUP_RETRIES = 10
 STARTUP_DELAY = 6
 HEALTH_INTERVAL = 30
@@ -62,6 +66,20 @@ async def _connect(runtime: WebRuntime) -> SupervisorClient:
     raise SupervisorError("Home Assistant injoignable après plusieurs tentatives")
 
 
+def _load_models(store: JsonStore) -> dict[str, ModelParameters]:
+    """Read the identified models; a corrupt file must not block startup."""
+    payload = store.load() or {}
+    rooms = payload.get("rooms") if isinstance(payload, dict) else None
+    if not isinstance(rooms, dict):
+        return {}
+    models: dict[str, ModelParameters] = {}
+    for room_id, data in rooms.items():
+        params = ModelParameters.from_dict(data if isinstance(data, dict) else None)
+        if params is not None:
+            models[str(room_id)] = params
+    return models
+
+
 def _timezone(name: str | None):
     if name:
         try:
@@ -89,6 +107,12 @@ async def run() -> None:
     store = JsonStore()
     config = AppConfig.from_dict(store.load())
     runtime = WebRuntime(VERSION, config)
+
+    history = HistoryStore()
+    model_store = JsonStore(Path(MODEL_PATH))
+    models = _load_models(model_store)
+    runtime.history = history
+    runtime.models = models
 
     runner = await start_site(runtime)
 
@@ -133,7 +157,7 @@ async def run() -> None:
         if publisher is None:
             raise SupervisorError("MQTT requis pour publier les entités")
 
-        supervisor_loop = SupervisionLoop(ha, publisher, config, tz)
+        supervisor_loop = SupervisionLoop(ha, publisher, config, tz, history, models)
         runtime.loop = supervisor_loop
 
         await publisher.publish_discovery(config)
@@ -144,7 +168,13 @@ async def run() -> None:
             runtime.config = candidate
             asyncio.create_task(publisher.publish_discovery(candidate))
 
+        def save_models(current: dict[str, ModelParameters]) -> None:
+            model_store.save(
+                {"rooms": {room_id: params.to_dict() for room_id, params in current.items()}}
+            )
+
         runtime.save_config = save_config
+        runtime.save_models = save_models
 
         loop_task = asyncio.create_task(supervisor_loop.run(stop), name="supervision")
         health_task = asyncio.create_task(_health_loop(runtime, stop), name="health")

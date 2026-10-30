@@ -19,9 +19,13 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from thermopt_lib.core.orders import LABELS_FR, order_from_z2m
 from thermopt_lib.perception.comfort import SLOT_DAY, SLOT_EVENING, SLOT_MORNING, SLOT_NIGHT
 
+from .audit import audit
 from .config import AppConfig, RoomConfig, ladder_rows, profile_summary, validate
 from .ha import EntityState
+from .history import HistoryStore, to_csv
 from .loop import SupervisionLoop
+from .model import ModelParameters
+from .model import fit as fit_model
 from .pickers import pick_by_domain, pick_fil_pilote, pick_options
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +56,9 @@ class WebRuntime:
         self.mqtt_detail = "en attente"
         self.healthy = False
         self.save_config = None  # set by main.py
+        self.history: HistoryStore | None = None
+        self.models: dict[str, ModelParameters] = {}
+        self.save_models = None  # set by main.py
 
     # -- derived values used by the templates --------------------------------
     @property
@@ -65,6 +72,10 @@ class WebRuntime:
 
     def rooms(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
+        predictions: dict[str, float | None] = {}
+        if self.loop is not None and self.loop.last_snapshot is not None:
+            predictions = {state.id: state.prediction for state in self.loop.last_snapshot.rooms}
+
         for room in self.config.rooms:
             live = self.states.get(room.temp_entity or "")
             power = self.states.get(room.power_entity or "")
@@ -81,6 +92,7 @@ class WebRuntime:
                     "safety": runtime.safety.value if runtime else "inactif",
                     "safety_reason": runtime.safety_reason if runtime else "",
                     "target_min": runtime.target_min if runtime else None,
+                    "prediction": predictions.get(room.id),
                 }
             )
         return rows
@@ -218,6 +230,83 @@ def create_app(runtime: WebRuntime) -> web.Application:
             runtime.loop.apply_config(runtime.config)
         raise web.HTTPFound("/")
 
+    async def _history_rows() -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        if runtime.history is None:
+            return rows
+        for room in runtime.config.rooms:
+            records = await runtime.history.async_read(room=room.id)
+            rows.append(
+                {
+                    "id": room.id,
+                    "name": room.name,
+                    "report": audit(records, room.name),
+                    "model": runtime.models.get(room.id),
+                }
+            )
+        return rows
+
+    async def history_page(request: web.Request) -> web.Response:
+        _guard(request)
+        return render(
+            "history.html",
+            active="history",
+            rows=await _history_rows(),
+            errors=[],
+            message=None,
+            size=runtime.history.size() if runtime.history else 0,
+        )
+
+    async def history_fit(request: web.Request) -> web.Response:
+        _guard(request)
+        rows = await _history_rows()
+        errors: list[str] = []
+        fitted: dict[str, ModelParameters] = {}
+
+        if runtime.history is not None:
+            for room in runtime.config.rooms:
+                records = await runtime.history.async_read(room=room.id)
+                report = audit(records, room.name)
+                if not report.ok:
+                    errors.extend(f"{room.name} : {item}" for item in report.missing)
+                    continue
+                params, problems = fit_model(records)
+                if params is None:
+                    errors.extend(f"{room.name} : {item}" for item in problems)
+                else:
+                    fitted[room.id] = params
+
+        if fitted:
+            runtime.models.update(fitted)
+            if runtime.save_models is not None:
+                runtime.save_models(runtime.models)
+            if runtime.loop is not None:
+                runtime.loop.models.update(fitted)
+
+        rows = await _history_rows()
+        return render(
+            "history.html",
+            active="history",
+            rows=rows,
+            errors=errors,
+            message=(f"{len(fitted)} modèle(s) identifié(s)." if fitted else None),
+            size=runtime.history.size() if runtime.history else 0,
+        )
+
+    async def history_export(request: web.Request) -> web.Response:
+        _guard(request)
+        if runtime.history is None:
+            raise web.HTTPNotFound()
+        records = await runtime.history.async_read()
+        body = to_csv(records)
+        return web.Response(
+            text=body,
+            content_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="thermopt-{datetime.now():%Y%m%d-%H%M}.csv"'
+            },
+        )
+
     async def health(request: web.Request) -> web.Response:
         status = 200 if runtime.healthy else 503
         return web.json_response(
@@ -235,6 +324,9 @@ def create_app(runtime: WebRuntime) -> web.Application:
     app.router.add_get("/config", config_page)
     app.router.add_post("/config", config_save)
     app.router.add_post("/active", toggle_active)
+    app.router.add_get("/history", history_page)
+    app.router.add_post("/history/fit", history_fit)
+    app.router.add_get("/history/export.csv", history_export)
     app.router.add_get("/health", health)
     return app
 

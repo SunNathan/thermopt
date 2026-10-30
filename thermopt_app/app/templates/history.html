@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if message %}<div class="banner ok">{{ message }}</div>{% endif %}
+{% if errors %}
+<div class="banner warn"><strong>Identification impossible</strong>
+  <ul class="errors">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  <div class="muted" style="margin-top:8px">
+    L'application refuse d'enregistrer un modèle que les données ne permettent pas de valider.
+  </div>
+</div>
+{% endif %}
+
+<div class="cards">
+  <div class="card">
+    <h2>Historique</h2>
+    <div class="value">{{ (size / 1024) | round(1) }} Ko</div>
+    <div class="muted">un fichier JSONL par mois, dans /data/history</div>
+  </div>
+  <div class="card">
+    <h2>Modèles identifiés</h2>
+    <div class="value">{{ rows | selectattr("model") | list | length }} / {{ rows | length }}</div>
+    <div class="muted">pièces avec un modèle validé</div>
+  </div>
+  <div class="card">
+    <h2>Export</h2>
+    <div class="muted">CSV complet, pour analyse hors ligne</div>
+    <div class="actions" style="margin-top:10px">
+      <a href="history/export.csv"><button type="button">Télécharger le CSV</button></a>
+    </div>
+  </div>
+</div>
+
+<div class="actions" style="margin:20px 0">
+  <form method="post" action="history/fit">
+    <button type="submit" class="primary">Identifier le modèle</button>
+  </form>
+</div>
+
+{% for row in rows %}
+<fieldset>
+  <legend>{{ row.name }}</legend>
+
+  {% set report = row.report %}
+  <table>
+    <thead><tr><th>Indicateur</th><th>Valeur</th></tr></thead>
+    <tbody>
+      <tr><td>Échantillons</td><td>{{ report.samples }}</td></tr>
+      <tr><td>Jours couverts</td><td>{{ report.days }}</td></tr>
+      <tr><td>Trous &gt; 45 min</td><td>{{ report.gaps }}</td></tr>
+      <tr><td>Périodes de refroidissement &ge; 3 h</td><td>{{ report.cooling_episodes }} ({{ report.cooling_hours }} h)</td></tr>
+      <tr><td>Premier / dernier relevé</td>
+          <td>{{ report.first.strftime("%d/%m %H:%M") if report.first else "—" }} →
+              {{ report.last.strftime("%d/%m %H:%M") if report.last else "—" }}</td></tr>
+    </tbody>
+  </table>
+
+  {% if report.hours_per_order %}
+  <h3 style="font-size:.95rem;margin:16px 0 6px">Temps passé par ordre</h3>
+  <table>
+    <thead><tr><th>Ordre</th><th>Heures</th><th>Puissance moyenne</th></tr></thead>
+    <tbody>
+      {% for order, hours in report.hours_per_order | dictsort %}
+      <tr>
+        <td>{{ order }}</td>
+        <td>{{ hours }}</td>
+        <td>{{ report.mean_power_per_order.get(order, "—") }} W</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if report.missing %}
+  <div class="banner warn" style="margin-top:14px">
+    <strong>Données insuffisantes</strong>
+    <ul class="errors">{% for item in report.missing %}<li>{{ item }}</li>{% endfor %}</ul>
+  </div>
+  {% elif row.model %}
+  <div class="banner ok" style="margin-top:14px">
+    <strong>Modèle identifié</strong> — RMSE 12 h : {{ row.model.rmse_12h }} °C
+  </div>
+  <table>
+    <tbody>
+      <tr><td>Déperditions équivalentes</td><td>{{ row.model.ua }} W/K</td></tr>
+      <tr><td>Constantes de temps</td>
+          <td>{{ row.model.tau_fast }} h et {{ row.model.tau_slow }} h</td></tr>
+      <tr><td>Gain extérieur</td><td>{{ row.model.gain_outdoor }}</td></tr>
+      <tr><td>Échantillons utilisés</td><td>{{ row.model.samples }}</td></tr>
+      <tr><td>Identifié le</td><td>{{ row.model.fitted_at }}</td></tr>
+    </tbody>
+  </table>
+  {% else %}
+  <div class="banner info" style="margin-top:14px">
+    Données suffisantes, modèle pas encore identifié : lance « Identifier le modèle ».
+  </div>
+  {% endif %}
+</fieldset>
+{% endfor %}
+
+{% if not rows %}
+<div class="banner info">Aucune pièce configurée : l'historique ne peut rien collecter.</div>
+{% endif %}
+
+<div class="muted" style="margin-top:12px">
+  L'identification utilise un ARX d'ordre 2 : <code>T[k] = a1·T[k−1] + a2·T[k−2] + be·Te + bp·P</code>.
+  La seconde variable d'état porte la dynamique de la masse thermique.
+</div>
+
+{% endblock %}

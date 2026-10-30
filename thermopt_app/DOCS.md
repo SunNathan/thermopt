@@ -94,6 +94,31 @@ Le nom de la pièce est celui que tu as saisi, mis en minuscules sans accents.
 Le garde-fou contourne la limite « un changement par 30 min » mais jamais le
 temps de stabilisation de 5 minutes, nécessaire au module pour décoder l'ordre.
 
+## Historique et modèle
+
+Onglet **Historique** :
+
+- chaque cycle écrit un échantillon dans `/data/history/`, un fichier JSONL par
+  mois (température, extérieure, ordre, puissance, énergie, consigne du
+  moment) ;
+- la page montre les jours couverts, les trous, le **temps passé par ordre** et
+  le nombre de périodes de refroidissement ;
+- **Télécharger le CSV** exporte tout, pour analyse hors ligne.
+
+**Identifier le modèle** applique les seuils du cadrage : au moins 14 jours,
+au moins 2 ordres utilisés 20 h chacun, au moins 10 périodes de refroidissement
+de 3 h, série continue. Si un seuil manque, l'application refuse et dit lequel.
+
+Le modèle est un ARX d'ordre 2 identifié par moindres carrés :
+`T[k] = a1·T[k−1] + a2·T[k−2] + be·Te[k−1] + bp·P[k−1] + c`. Sa seconde variable
+d'état porte la dynamique de la masse thermique. Il est accepté seulement si
+l'erreur de simulation libre sur 12 h reste sous **0,5 °C**. Les paramètres
+sont enregistrés dans `/data/model.json` et les déperditions équivalentes, les
+constantes de temps et le gain extérieur sont affichés.
+
+Quand un modèle existe, `sensor.thermopt_<piece>_temperature_prevue_12h` publie
+la température attendue en maintenant l'ordre et la météo actuels.
+
 ## Journaux
 
 Onglet **Journal** de l'application. Pour plus de détail, passe `log_level` à

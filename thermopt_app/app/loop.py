@@ -32,6 +32,8 @@ from thermopt_lib.reporting import describe_reason
 
 from .config import AppConfig, RoomConfig
 from .ha import HaClient
+from .history import HistoryStore
+from .model import ModelParameters, predict
 from .publish import Publisher, RoomState, Snapshot
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ class RoomRuntime:
     safety: SafetyState = SafetyState.IDLE
     safety_reason: str = ""
     target_min: float | None = None
+    recent: list[dict] = field(default_factory=list)
 
     @property
     def id(self) -> str:
@@ -78,11 +81,15 @@ class SupervisionLoop:
         publisher: Publisher,
         config: AppConfig,
         timezone: tzinfo,
+        history: HistoryStore,
+        models: dict[str, ModelParameters] | None = None,
     ) -> None:
         self._ha = ha
         self._publisher = publisher
         self._config = config
         self._tz = timezone
+        self._history = history
+        self.models: dict[str, ModelParameters] = dict(models or {})
         self._rooms: dict[str, RoomRuntime] = {
             room.id: RoomRuntime(config=room) for room in config.rooms
         }
@@ -91,6 +98,8 @@ class SupervisionLoop:
         self.degraded: list[str] = []
         self.last_cycle: datetime | None = None
         self.mode = "observation"
+        self._pending_records: list[dict] = []
+        self.last_snapshot: Snapshot | None = None
 
     # -- configuration -------------------------------------------------------
     def apply_config(self, config: AppConfig) -> None:
@@ -151,7 +160,7 @@ class SupervisionLoop:
         ]
 
         await self._publisher.publish_state(
-            Snapshot(
+            snapshot := Snapshot(
                 mode=self.mode,
                 degraded=bool(self.degraded),
                 details=list(self.degraded),
@@ -160,6 +169,9 @@ class SupervisionLoop:
                 rooms=room_states,
             )
         )
+        self.last_snapshot = snapshot
+        await self._history.async_append(self._pending_records)
+        self._pending_records = []
         _LOGGER.info(
             "Cycle %s %.4f €/kWh, mode %s : %s",
             "HC" if in_hc else "HP",
@@ -226,6 +238,27 @@ class SupervisionLoop:
 
         self._check_effect(room, now, t_air, power)
 
+        record = {
+            "ts": now.isoformat(timespec="seconds"),
+            "room": room.id,
+            "t_air": t_air,
+            "t_ext": self._outdoor_temperature(),
+            "order": current.value if current else None,
+            "power": power,
+            "energy": await self._ha.numeric(room.config.energy_entity),
+            "target_min": round(t_min, 1),
+        }
+        self._pending_records.append(record)
+        room.recent.append(record)
+        if len(room.recent) > 400:
+            room.recent = room.recent[-400:]
+
+        prediction = None
+        model = self.models.get(room.id)
+        if model is not None and room.recent:
+            power_now = model.order_power.get(current.value, 0.0) if current else 0.0
+            prediction = predict(model, room.recent, power_w=power_now)
+
         return RoomState(
             id=room.id,
             name=room.name,
@@ -236,6 +269,7 @@ class SupervisionLoop:
             applied_order=current,
             order_source="thermopt" if room.last_written is current else "manuel",
             power=power,
+            prediction=prediction,
         )
 
     def _current_order(self, room: RoomRuntime) -> Order | None:
@@ -317,6 +351,19 @@ class SupervisionLoop:
         room.no_effect = missing
 
     # -- helpers -------------------------------------------------------------
+    def _outdoor_temperature(self) -> float | None:
+        entity = self._config.weather_entity
+        if not entity:
+            return None
+        state = self._ha.cached().get(entity)
+        if state is None:
+            return None
+        raw = state.attributes.get("temperature")
+        try:
+            return float(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+
     async def _fallback_active(self) -> bool:
         entity = self._config.fallback_entity
         if not entity:

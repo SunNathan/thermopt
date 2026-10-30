@@ -269,6 +269,23 @@ def room_entities(room_id: str, name: str, version: str) -> list[tuple[str, str,
     entities.append(
         (
             "sensor",
+            f"{room_id}_prediction",
+            sensor_config(
+                name="Température prévue à 12 h",
+                unique_id=f"{unique}_prediction",
+                object_id=f"thermopt_{slug}_temperature_prevue_12h",
+                state_topic=room_topic(room_id, "prediction"),
+                device=device,
+                device_class="temperature",
+                unit="°C",
+                icon="mdi:crystal-ball",
+            ),
+        )
+    )
+
+    entities.append(
+        (
+            "sensor",
             f"{room_id}_applied_order",
             sensor_config(
                 name="Ordre appliqué",

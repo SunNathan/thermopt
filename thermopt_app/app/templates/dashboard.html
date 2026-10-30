@@ -67,7 +67,7 @@
 {% if rooms %}
 <table>
   <thead>
-    <tr><th>Pièce</th><th>Température</th><th>Consigne min</th><th>Ordre</th><th>Puissance</th><th>Sécurité</th></tr>
+    <tr><th>Pièce</th><th>Température</th><th>Consigne min</th><th>Ordre</th><th>Puissance</th><th>Prévue 12 h</th><th>Sécurité</th></tr>
   </thead>
   <tbody>
   {% for room in rooms %}
@@ -77,6 +77,7 @@
       <td>{{ room.target_min if room.target_min is defined else "—" }}</td>
       <td>{{ room.order_label or room.order or "—" }}</td>
       <td>{{ room.power or "—" }}</td>
+      <td>{{ room.prediction if room.prediction is not none else "—" }}</td>
       <td>{{ room.safety }}{% if room.safety_reason %} <span class="muted">— {{ room.safety_reason }}</span>{% endif %}</td>
     </tr>
   {% endfor %}

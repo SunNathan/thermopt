@@ -36,6 +36,7 @@ class RoomState:
     applied_order: Order | None = None
     order_source: str = "inconnue"
     power: float | None = None
+    prediction: float | None = None
 
 
 @dataclass(slots=True)
@@ -89,6 +90,10 @@ class Publisher:
             await self._mqtt.publish(room_topic(room.id, "temperature"), _number(room.temperature))
             await self._mqtt.publish(room_topic(room.id, "target_min"), _number(room.target_min))
             await self._mqtt.publish(room_topic(room.id, "power"), _number(room.power))
+            if room.prediction is not None:
+                await self._mqtt.publish(
+                    room_topic(room.id, "prediction"), _number(room.prediction)
+                )
             await self._mqtt.publish(room_topic(room.id, "safety"), room.safety)
             await self._mqtt.publish_json(
                 room_attributes_topic(room.id, "safety"),

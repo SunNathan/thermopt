@@ -8,6 +8,7 @@ installation and is given by the ``X-Ingress-Path`` header.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import replace
 from datetime import datetime
@@ -286,7 +287,10 @@ def create_app(runtime: WebRuntime) -> web.Application:
         if runtime.save_config is not None:
             runtime.save_config(runtime.config)
         if runtime.loop is not None:
+            # apply_config refreshes the displayed mode immediately; the cycle
+            # pushes the new state to MQTT without waiting 15 minutes.
             runtime.loop.apply_config(runtime.config)
+            asyncio.create_task(runtime.loop.cycle())
         raise web.HTTPFound(REDIRECT_HOME)
 
     async def plan_page(request: web.Request) -> web.Response:

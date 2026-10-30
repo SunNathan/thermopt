@@ -101,6 +101,7 @@ class SupervisionLoop:
         self.last_cycle: datetime | None = None
         self.mode = "observation"
         self._pending_records: list[dict] = []
+        self._busy = False
         self.last_snapshot: Snapshot | None = None
         self.forecast_count = 0
         self.forecast_error: str | None = None
@@ -115,7 +116,17 @@ class SupervisionLoop:
             runtime.config = room
             rooms[room.id] = runtime
         self._rooms = rooms
+        self.refresh_mode()
         _LOGGER.info("Configuration rechargée : %s pièce(s)", len(rooms))
+
+    def refresh_mode(self) -> None:
+        """Recompute the displayed mode without waiting for the next cycle."""
+        if not self._config.active:
+            self.mode = "observation"
+        elif self.fallback_active():
+            self.mode = "repli"
+        else:
+            self.mode = "actif"
 
     @property
     def rooms(self) -> dict[str, RoomRuntime]:
@@ -140,6 +151,17 @@ class SupervisionLoop:
 
     # -- one cycle -----------------------------------------------------------
     async def cycle(self) -> None:
+        """Run one cycle, never two at once."""
+        if self._busy:
+            _LOGGER.debug("Cycle déjà en cours, ignoré")
+            return
+        self._busy = True
+        try:
+            await self._cycle_once()
+        finally:
+            self._busy = False
+
+    async def _cycle_once(self) -> None:
         now = datetime.now(self._tz)
         config = self._config
         await self._ha.refresh_states()
@@ -155,7 +177,7 @@ class SupervisionLoop:
         await self._refresh_forecast(now)
 
         auto_ok = await self._ha.is_on(config.auto_entity) if config.auto_entity else True
-        fallback = await self._fallback_active()
+        fallback = self.fallback_active()
         active = config.active and auto_ok and not fallback
         self.mode = self._mode(config, active)
 
@@ -456,7 +478,8 @@ class SupervisionLoop:
         except (TypeError, ValueError):
             return None
 
-    async def _fallback_active(self) -> bool:
+    def fallback_active(self) -> bool:
+        """True when the native fallback planning has taken over."""
         entity = self._config.fallback_entity
         if not entity:
             return False

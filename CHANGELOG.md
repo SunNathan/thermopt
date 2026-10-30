@@ -6,6 +6,16 @@ doit toujours correspondre au tag publié.
 
 ## [Unreleased]
 
+### Corrigé
+
+- **Bascule actif/observation sans effet visible** : le mode affiché provenait
+  du dernier cycle et restait donc figé jusqu'à 15 minutes. Il est maintenant
+  recalculé immédiatement à chaque changement de configuration, et la bascule
+  déclenche un cycle en tâche de fond pour mettre à jour les entités MQTT.
+- Un cycle ne peut plus s'exécuter deux fois en parallèle (garde de réentrance).
+- **Version de Home Assistant retirée** du tableau de bord ; l'information
+  reste dans les journaux de l'app.
+
 ### Ajouté
 
 - **Consigne Eco indépendante** : Eco n'est plus forcément Confort − 3,5.

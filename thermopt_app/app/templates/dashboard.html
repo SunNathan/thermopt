@@ -45,12 +45,6 @@
   </div>
 
   <div class="card">
-    <h2>Home Assistant</h2>
-    <div class="value">{{ runtime.ha_version }}</div>
-    <div class="muted">{{ runtime.ha_location or "—" }}</div>
-  </div>
-
-  <div class="card">
     <h2>Météo</h2>
     <div class="value">{{ weather.temperature if weather.temperature is not none else "—" }} °C</div>
     <div class="muted">

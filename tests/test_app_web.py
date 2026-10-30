@@ -311,3 +311,62 @@ def test_eco_must_sit_between_frost_and_comfort() -> None:
 
     too_low = replace(config, eco_setpoint=6.0)
     assert any("Eco" in error for error in validate(too_low))
+
+
+# ---------------------------------------------------------------------------
+# Mode toggle
+# ---------------------------------------------------------------------------
+class _LoopStub:
+    """The web layer only needs the mode and a way to reload the config."""
+
+    def __init__(self) -> None:
+        self.mode = "actif"
+        self.last_cycle = None
+        self.last_snapshot = None
+        self.degraded: list[str] = []
+        self.forecast_count = 0
+        self.forecast_error = None
+        self.cycles = 0
+        self.config = None
+        self.rooms: dict = {}
+
+    def apply_config(self, config) -> None:
+        self.config = config
+        self.mode = "actif" if config.active else "observation"
+
+    async def cycle(self) -> None:
+        self.cycles += 1
+
+
+async def test_toggle_switches_to_observation_immediately(socket_enabled) -> None:
+    runtime = _runtime()
+    stub = _LoopStub()
+    runtime.loop = stub  # type: ignore[assignment]
+
+    client = await _client(runtime)
+    try:
+        response = await client.post("/active", allow_redirects=False)
+        assert response.status == 302
+
+        assert stub.mode == "observation"
+        assert stub.cycles == 1
+
+        page = await client.get("/")
+        body = await page.text()
+        assert "observation" in body
+    finally:
+        await client.close()
+
+
+async def test_home_page_no_longer_shows_the_ha_version(socket_enabled) -> None:
+    runtime = _runtime()
+    runtime.ha_version = "2026.10.7"
+    runtime.loop = _LoopStub()  # type: ignore[assignment]
+
+    client = await _client(runtime)
+    try:
+        body = await (await client.get("/")).text()
+        assert "2026.10.7" not in body
+        assert "Home Assistant" not in body
+    finally:
+        await client.close()

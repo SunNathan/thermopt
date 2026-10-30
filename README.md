@@ -76,6 +76,13 @@ ruff check custom_components tests
 ruff format custom_components tests
 ```
 
+Avant chaque push, lancer le script qui reproduit exactement le job `quality`
+de la CI (ruff, mypy, pytest) :
+
+```powershell
+.\scripts\check.ps1
+```
+
 Les tests Home Assistant utilisent `pytest-homeassistant-custom-component`
 (qui impose la version de Home Assistant testée). Sur Windows, deux modules
 Unix manquent au harnais : voir les commentaires de `tests/conftest.py`.

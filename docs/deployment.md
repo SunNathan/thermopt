@@ -92,6 +92,9 @@ jour.
 | `hassfest` | validation du manifest et des traductions par Home Assistant |
 | `hacs` | validation de la structure du dépôt pour HACS |
 
+Pour ne pas découvrir un run rouge après coup, `scripts/check.ps1` exécute les
+quatre mêmes commandes que le job `quality` en local.
+
 `.github/workflows/release.yml` s'exécute sur un tag `v*` :
 cohérence tag ↔ `manifest.version`, puis création de la GitHub Release.
 

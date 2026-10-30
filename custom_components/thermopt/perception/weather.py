@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -46,27 +48,28 @@ class WeatherProvider:
         self._fetched_at: datetime | None = None
 
     # -- persistence ---------------------------------------------------------
-    def dump(self) -> dict:
+    def dump(self) -> dict[str, Any]:
         return {
             "fetched_at": self._fetched_at.isoformat() if self._fetched_at else None,
             "points": [[stamp.isoformat(), temp] for stamp, temp in self._points],
         }
 
-    def load(self, data: dict | None) -> None:
+    def load(self, data: dict[str, Any] | None) -> None:
         if not data:
             return
-        try:
-            self._fetched_at = (
-                dt_util.parse_datetime(data["fetched_at"]) if data.get("fetched_at") else None
-            )
-            self._points = [
-                (dt_util.parse_datetime(stamp), float(temp))
-                for stamp, temp in data.get("points", [])
-            ]
-        except (KeyError, TypeError, ValueError):  # pragma: no cover - corrupt storage
+
+        fetched_at = _parse_stamp(data.get("fetched_at"))
+        points = [
+            point
+            for point in (_parse_point(entry) for entry in data.get("points") or [])
+            if point is not None
+        ]
+
+        if data.get("points") and not points:  # pragma: no cover - corrupt storage
             _LOGGER.warning("Discarding corrupt weather cache")
-            self._points = []
-            self._fetched_at = None
+
+        self._points = points
+        self._fetched_at = fetched_at
 
     # -- public API ----------------------------------------------------------
     async def async_snapshot(self, now: datetime) -> WeatherSnapshot:
@@ -95,20 +98,8 @@ class WeatherProvider:
             blocking=True,
             return_response=True,
         )
-        payload = (response or {}).get(self._entity_id or "", {})
-        forecast = payload.get("forecast") or []
 
-        points: list[tuple[datetime, float]] = []
-        for item in forecast:
-            raw_stamp = item.get("datetime")
-            temperature = item.get("temperature")
-            if raw_stamp is None or temperature is None:
-                continue
-            stamp = dt_util.parse_datetime(raw_stamp) if isinstance(raw_stamp, str) else raw_stamp
-            if stamp is None:
-                continue
-            points.append((stamp, float(temperature)))
-
+        points = _extract_points(response, self._entity_id or "")
         if not points:
             raise ValueError("empty forecast")
 
@@ -122,10 +113,9 @@ class WeatherProvider:
             state = self._hass.states.get(self._entity_id)
             if state is not None:
                 raw = state.attributes.get("temperature")
-                try:
+                if isinstance(raw, int | float):
                     base = float(raw)
-                except (TypeError, ValueError):
-                    base = None
+
         if base is None:
             return []
 
@@ -133,15 +123,53 @@ class WeatherProvider:
         points: list[tuple[datetime, float]] = []
         for hour in range(24):
             stamp = start + timedelta(hours=hour)
-            angle = 2 * 3.141592653589793 * (stamp.hour - SYNTHETIC_PEAK_HOUR) / 24
-            points.append((stamp, round(base + SYNTHETIC_AMPLITUDE * _cos(angle), 2)))
+            angle = 2 * math.pi * (stamp.hour - SYNTHETIC_PEAK_HOUR) / 24
+            points.append((stamp, round(base + SYNTHETIC_AMPLITUDE * math.cos(angle), 2)))
         return points
 
 
-def _cos(angle: float) -> float:
-    import math
+def _parse_stamp(raw: object) -> datetime | None:
+    """Parse an ISO timestamp coming from storage or a service response."""
+    if not isinstance(raw, str):
+        return None
+    return dt_util.parse_datetime(raw)
 
-    return math.cos(angle)
+
+def _parse_point(entry: object) -> tuple[datetime, float] | None:
+    """Parse one ``[timestamp, temperature]`` pair from storage."""
+    if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+        return None
+    stamp = _parse_stamp(entry[0])
+    temperature = entry[1]
+    if stamp is None or not isinstance(temperature, int | float):
+        return None
+    return stamp, float(temperature)
+
+
+def _extract_points(response: object, entity_id: str) -> list[tuple[datetime, float]]:
+    """Validate the ``weather.get_forecasts`` payload without trusting it."""
+    if not isinstance(response, dict):
+        return []
+
+    payload = response.get(entity_id)
+    if not isinstance(payload, dict):
+        return []
+
+    forecast = payload.get("forecast")
+    if not isinstance(forecast, list):
+        return []
+
+    points: list[tuple[datetime, float]] = []
+    for item in forecast:
+        if not isinstance(item, dict):
+            continue
+        stamp = _parse_stamp(item.get("datetime"))
+        temperature = item.get("temperature")
+        if stamp is None or not isinstance(temperature, int | float):
+            continue
+        points.append((stamp, float(temperature)))
+
+    return points
 
 
 def outdoor_temperature_at(snapshot: WeatherSnapshot, moment: datetime) -> float | None:

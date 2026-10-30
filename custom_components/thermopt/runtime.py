@@ -3,24 +3,28 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .actuators.select_driver import SelectDriver
 from .const import (
     DEGRADED_SENSOR_FROZEN,
     DEGRADED_SENSOR_MISSING,
+    DOMAIN,
     SAMPLE_INTERVAL,
     SENSOR_FROZEN_DELTA,
     SENSOR_FROZEN_WINDOW,
     STORAGE_KEY,
     STORAGE_SAVE_DELAY,
     STORAGE_VERSION,
+    VERSION,
 )
 from .coordinator import ThermOptCoordinator
 from .core.orders import Order, order_from_z2m
@@ -124,13 +128,15 @@ class ThermOptRuntime:
         self.config = SystemConfig.from_entry(entry)
         self.rooms: dict[str, RoomRuntime] = {}
         self.last_cycle: datetime | None = None
+        self.version: str = VERSION
         self.store: Store[dict] = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}")
         self.weather = WeatherProvider(hass, self.config.weather_entity)
         self.coordinator = ThermOptCoordinator(hass, self, entry)
-        self._unsub_sampler = None
+        self._unsub_sampler: Callable[[], None] | None = None
 
     # ------------------------------------------------------------------
     async def async_setup(self) -> None:
+        self.version = await _integration_version(self.hass)
         stored = await self.store.async_load() or {}
 
         self.weather.load(stored.get("weather"))
@@ -205,6 +211,15 @@ class ThermOptRuntime:
             "last_cycle": self.last_cycle.isoformat() if self.last_cycle else None,
             "rooms": {sid: room.dump() for sid, room in self.rooms.items()},
         }
+
+
+async def _integration_version(hass: HomeAssistant) -> str:
+    """Version declared in ``manifest.json`` (falls back to the constant)."""
+    try:
+        integration = await async_get_integration(hass, DOMAIN)
+    except Exception:  # noqa: BLE001 - never block setup on a cosmetic detail
+        return VERSION
+    return str(integration.version or VERSION)
 
 
 def _parse(raw: object) -> datetime | None:

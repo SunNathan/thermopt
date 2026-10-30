@@ -90,9 +90,16 @@ def _schema(*pairs: tuple[Any, Any]) -> vol.Schema:
 
 
 def _entity(
-    key: str, domain: str | list[str], default: str | None = None, **kwargs: Any
+    key: str,
+    domain: str | list[str],
+    default: str | None = None,
+    device_class: str | None = None,
 ) -> tuple[Any, Any]:
-    config = selector.EntitySelectorConfig(domain=domain, **kwargs)
+    if device_class:
+        config = selector.EntitySelectorConfig(domain=domain, device_class=device_class)
+    else:
+        config = selector.EntitySelectorConfig(domain=domain)
+
     if default:
         return vol.Optional(key, default=default), selector.EntitySelector(config)
     return vol.Optional(key), selector.EntitySelector(config)
@@ -107,17 +114,25 @@ def _number(
     step: float = 0.1,
     unit: str | None = None,
 ) -> tuple[Any, Any]:
+    if unit is None:
+        config = selector.NumberSelectorConfig(
+            min=minimum,
+            max=maximum,
+            step=step,
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    else:
+        config = selector.NumberSelectorConfig(
+            min=minimum,
+            max=maximum,
+            step=step,
+            mode=selector.NumberSelectorMode.BOX,
+            unit_of_measurement=unit,
+        )
+
     return (
         vol.Optional(key, default=default),
-        selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=minimum,
-                max=maximum,
-                step=step,
-                mode=selector.NumberSelectorMode.BOX,
-                unit_of_measurement=unit,
-            )
-        ),
+        selector.NumberSelector(config),
     )
 
 

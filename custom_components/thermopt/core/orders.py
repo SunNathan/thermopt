@@ -108,7 +108,7 @@ class Ladder:
 
     def setpoints(self) -> dict[Order, float]:
         """Full ladder, warmest first."""
-        return {o: self.setpoint(o) for o in sorted(Order, key=RANK.get, reverse=True)}
+        return {o: self.setpoint(o) for o in sorted(Order, key=RANK.__getitem__, reverse=True)}
 
     def nearest(self, target: float, *, include_frost: bool = False) -> Order:
         """Order whose effective setpoint is closest to ``target``.

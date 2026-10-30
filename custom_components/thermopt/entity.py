@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, MODEL, NAME
 from .coordinator import RoomSnapshot, ThermOptCoordinator
 from .runtime import ThermOptRuntime
 from .settings import RoomConfig
+
+
+def description_name(description: EntityDescription) -> str | None:
+    """Return the description's name when it is a plain string.
+
+    ``EntityDescription.name`` is typed ``str | UndefinedType | None``; our
+    descriptions always carry a string, but the type system cannot know it.
+    """
+    name = description.name
+    return name if isinstance(name, str) else None
 
 
 def hub_device_info(runtime: ThermOptRuntime) -> DeviceInfo:
@@ -19,7 +30,7 @@ def hub_device_info(runtime: ThermOptRuntime) -> DeviceInfo:
         manufacturer=MANUFACTURER,
         model=MODEL,
         entry_type=DeviceEntryType.SERVICE,
-        sw_version=runtime.entry.version,
+        sw_version=runtime.version,
     )
 
 

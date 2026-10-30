@@ -9,6 +9,8 @@ NAME = "ThermOpt"
 
 PLATFORMS: list[str] = ["binary_sensor", "button", "sensor", "switch"]
 
+VERSION = "0.1.0"
+
 # --- Persistence -------------------------------------------------------------
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.state"

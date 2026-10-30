@@ -14,7 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .entity import ThermOptEntity, ThermOptRoomEntity, hub_device_info
+from .entity import ThermOptEntity, ThermOptRoomEntity, description_name, hub_device_info
 from .runtime import ThermOptRuntime
 from .settings import RoomConfig
 
@@ -62,7 +62,7 @@ class ThermOptSystemBinary(ThermOptEntity, BinarySensorEntity):
     def __init__(self, runtime: ThermOptRuntime, description: SystemBinaryDescription) -> None:
         super().__init__(runtime, description.key)
         self.entity_description = description
-        self._attr_name = description.name
+        self._attr_name = description_name(description)
         self._attr_device_info = hub_device_info(runtime)
 
     @property

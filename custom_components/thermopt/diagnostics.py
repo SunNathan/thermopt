@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_HC_PRICE, CONF_HP_PRICE
+from .coordinator import ThermOptData
 from .runtime import ThermOptRuntime
 
 TO_REDACT = {CONF_HP_PRICE, CONF_HC_PRICE}
@@ -77,18 +78,24 @@ async def async_get_config_entry_diagnostics(
                 "nominal_power": room.config.nominal_power,
                 "surface": room.config.surface,
                 "volume": room.config.volume,
-                "snapshot": (
-                    {
-                        "t_air": data.rooms[sid].t_air,
-                        "order": data.rooms[sid].order.value if data.rooms[sid].order else None,
-                        "target_min": data.rooms[sid].target_min,
-                        "guard_floor": data.rooms[sid].guard_floor,
-                        "degraded": list(data.rooms[sid].degraded),
-                    }
-                    if data and sid in data.rooms
-                    else None
-                ),
+                "snapshot": _room_snapshot(data, sid),
             }
             for sid, room in runtime.rooms.items()
         },
+    }
+
+
+def _room_snapshot(data: ThermOptData | None, subentry_id: str) -> dict[str, Any] | None:
+    """Diagnostics view of one room, or ``None`` before the first cycle."""
+    if data is None:
+        return None
+    snapshot = data.rooms.get(subentry_id)
+    if snapshot is None:
+        return None
+    return {
+        "t_air": snapshot.t_air,
+        "order": snapshot.order.value if snapshot.order is not None else None,
+        "target_min": snapshot.target_min,
+        "guard_floor": snapshot.guard_floor,
+        "degraded": list(snapshot.degraded),
     }

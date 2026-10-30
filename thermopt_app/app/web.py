@@ -22,6 +22,7 @@ from thermopt_lib.perception.comfort import SLOT_DAY, SLOT_EVENING, SLOT_MORNING
 from .config import AppConfig, RoomConfig, ladder_rows, profile_summary, validate
 from .ha import EntityState
 from .loop import SupervisionLoop
+from .pickers import pick_by_domain, pick_fil_pilote, pick_options
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,11 +86,6 @@ class WebRuntime:
         return rows
 
 
-def _entities(states: dict[str, EntityState], domain: str) -> list[str]:
-    prefix = f"{domain}."
-    return sorted(key for key in states if key.startswith(prefix))
-
-
 def _guard(request: web.Request) -> None:
     peer = request.remote
     if peer not in (SUPERVISOR_IP, "127.0.0.1", "::1"):
@@ -133,17 +129,47 @@ def create_app(runtime: WebRuntime) -> web.Application:
         message: str | None = None,
     ) -> web.Response:
         current = config or runtime.config
+        selected = rooms if rooms is not None else current.rooms
+        states = runtime.states
+
+        rows = []
+        for room in selected:
+            rows.append(
+                {
+                    "room": room,
+                    "temp": pick_options(
+                        states,
+                        domain="sensor",
+                        device_class="temperature",
+                        current=room.temp_entity,
+                    ),
+                    "humidity": pick_options(
+                        states,
+                        domain="sensor",
+                        device_class="humidity",
+                        current=room.humidity_entity,
+                    ),
+                    "power": pick_options(
+                        states, domain="sensor", device_class="power", current=room.power_entity
+                    ),
+                    "energy": pick_options(
+                        states, domain="sensor", device_class="energy", current=room.energy_entity
+                    ),
+                    "fil": pick_fil_pilote(states, room.fil_pilote_entity),
+                    "relay": pick_by_domain(states, "switch", room.relay_entity),
+                }
+            )
+
         return render(
             "config.html",
             active="config",
             config=current,
-            rooms=list(rooms if rooms is not None else current.rooms),
+            rows=rows,
             errors=errors or [],
             message=message,
-            sensors=_entities(runtime.states, "sensor"),
-            selects=_entities(runtime.states, "select"),
-            switches=_entities(runtime.states, "switch"),
-            weather=_entities(runtime.states, "weather"),
+            weather=pick_by_domain(states, "weather", current.weather_entity),
+            booleans=pick_by_domain(states, "input_boolean", current.auto_entity),
+            fallback_choices=pick_by_domain(states, "input_boolean", current.fallback_entity),
             slot_labels=SLOT_LABELS,
             summary=profile_summary(current),
             ladder=ladder_rows(current),

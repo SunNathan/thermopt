@@ -1,8 +1,8 @@
 {
   "domain": "thermopt",
   "name": "ThermOpt",
-  "codeowners": ["@SunNathan"],
   "categories": ["climate", "energy"],
+  "codeowners": ["@SunNathan"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/SunNathan/thermopt",

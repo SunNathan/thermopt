@@ -21,6 +21,26 @@ git remote add origin https://github.com/SunNathan/thermopt.git
 git push -u origin main
 ```
 
+### Métadonnées exigées par la validation HACS
+
+Trois éléments ne vivent pas dans le code et se règlent sur GitHub
+(*Settings* du dépôt) : sans eux, le job « Validation HACS » reste rouge.
+
+| Élément | Où | Valeur suggérée |
+|---|---|---|
+| Description | *Settings → General → Description* | « Pilotage optimal du chauffage fil pilote dans Home Assistant » |
+| Topics | *Settings → General → Topics* | `home-assistant`, `homeassistant`, `hacs`, `custom-integration`, `heating`, `climate`, `energy` |
+| Licence | fichier `LICENSE` | déjà présent (MIT) |
+
+En ligne de commande, avec un jeton personnel (`repo` scope) :
+
+```bash
+curl -X PATCH https://api.github.com/repos/SunNathan/thermopt \
+  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -d '{"description":"Pilotage optimal du chauffage fil pilote dans Home Assistant","topics":["home-assistant","homeassistant","hacs","custom-integration","heating","climate","energy"]}'
+```
+
 ## 2. Flux de publication
 
 ```

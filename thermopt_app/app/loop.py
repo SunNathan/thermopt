@@ -17,13 +17,12 @@ from thermopt_lib.core.ring_buffer import RoomSeries
 from thermopt_lib.core.safety import (
     EFFECT_CHECK_MINUTES,
     EFFECT_MIN_POWER,
-    MANUAL_WRITE_GRACE,
+    GUARD_MARGIN,
     WINDOW_SECONDS,
     SafetyDecision,
     SafetyState,
     detect_window,
     evaluate,
-    manual_hold,
 )
 from thermopt_lib.perception.comfort import ComfortProfile
 from thermopt_lib.perception.liveness import is_frozen
@@ -53,7 +52,6 @@ class RoomRuntime:
     config: RoomConfig
     series: RoomSeries = field(default_factory=RoomSeries)
     guard_armed: bool = False
-    manual_hold_until: datetime | None = None
     suspended_until: datetime | None = None
     last_written: Order | None = None
     last_write_at: datetime | None = None
@@ -149,6 +147,15 @@ class SupervisionLoop:
         next_tick = (now // CYCLE_SECONDS + 1) * CYCLE_SECONDS
         return max(MIN_DELAY, next_tick - now)
 
+    @property
+    def next_cycle_at(self) -> datetime | None:
+        """Clock-aligned moment of the next decision, once a cycle has run."""
+        if self.last_cycle is None:
+            return None
+        now = datetime.now(self._tz).timestamp()
+        next_tick = (now // CYCLE_SECONDS + 1) * CYCLE_SECONDS
+        return datetime.fromtimestamp(next_tick, self._tz)
+
     # -- one cycle -----------------------------------------------------------
     async def cycle(self) -> None:
         """Run one cycle, never two at once."""
@@ -237,8 +244,6 @@ class SupervisionLoop:
         if is_frozen(samples, window=FROZEN_WINDOW, delta=FROZEN_DELTA):
             self.degraded.append(f"{room.name} : capteur figé")
 
-        self._detect_manual(room, current, now)
-
         t_min = profile.t_min(now, present=False)
         decision = evaluate(
             now=now,
@@ -247,7 +252,6 @@ class SupervisionLoop:
             current=current,
             armed=room.guard_armed,
             suspended_until=room.suspended_until,
-            manual_hold_until=room.manual_hold_until,
             window_open=detect_window(room.series.tail(WINDOW_SECONDS, now.timestamp()), now),
         )
         if decision.suspend_until is not None:
@@ -272,11 +276,15 @@ class SupervisionLoop:
         if (
             active
             and not wrote
+            and decision.order is None
             and self._config.optimizer_active
             and room.plan is not None
-            and room.manual_hold_until is None
         ):
             await self._apply_optimizer(room, room.plan.next_order, now)
+        elif active and not wrote and decision.state is SafetyState.IDLE and t_air is not None:
+            # Active mode is authoritative: drive the radiator to the order the
+            # comfort profile asks for, whatever wrote the current one.
+            await self._apply_profile_order(room, t_min, now)
 
         self._check_effect(room, now, t_air, power)
 
@@ -390,6 +398,48 @@ class SupervisionLoop:
         room.pending_check = now + timedelta(minutes=EFFECT_CHECK_MINUTES)
         _LOGGER.info("Optimiseur : %s → %s", room.name, order.value)
 
+    async def _apply_profile_order(self, room: RoomRuntime, t_min: float, now: datetime) -> bool:
+        """Drive the radiator to the order the comfort profile asks for.
+
+        In active mode ThermOpt is authoritative: it does not care who wrote
+        the current order (a manual change belongs in observation mode). The
+        optimiser keeps authority when it drives, and the guard rails always
+        win over this method. Only the usual rate limit applies.
+        """
+        entity = room.config.fil_pilote_entity
+        if not entity:
+            return False
+        current = self._current_order(room)
+        if current is None:
+            return False
+        target = self._config.ladder.profile_order(t_min, GUARD_MARGIN)
+        if current is target:
+            # Adopt the order already in place: the dashboard can report it as
+            # ours, and there is nothing to write.
+            room.last_written = target
+            return False
+        if not self._rate_ok(room, now):
+            return False
+
+        try:
+            await self._ha.select_option(entity, z2m_value(target))
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Profil refusé sur %s : %s", room.name, err)
+            self.degraded.append(f"{room.name} : écriture refusée")
+            return False
+
+        room.last_written = target
+        room.last_write_at = now
+        room.pending_check = now + timedelta(minutes=EFFECT_CHECK_MINUTES)
+        _LOGGER.info(
+            "Profil %s : %s → %s (cible %.1f °C)",
+            room.name,
+            current.value,
+            target.value,
+            t_min,
+        )
+        return True
+
     def _current_order(self, room: RoomRuntime) -> Order | None:
         entity = room.config.fil_pilote_entity
         if not entity:
@@ -398,19 +448,6 @@ class SupervisionLoop:
         if state is None or not state.available:
             return None
         return order_from_z2m(state.state)
-
-    def _detect_manual(self, room: RoomRuntime, current: Order | None, now: datetime) -> None:
-        if room.last_written is None or room.manual_hold_until is not None:
-            return
-        if current is None or current is room.last_written:
-            return
-        if (
-            room.last_write_at is not None
-            and (now - room.last_write_at).total_seconds() < MANUAL_WRITE_GRACE
-        ):
-            return
-        room.manual_hold_until = manual_hold(now)
-        _LOGGER.info("%s : réglage manuel détecté, pièce gelée 2 h", room.name)
 
     async def _apply(self, room: RoomRuntime, decision: SafetyDecision, now: datetime) -> bool:
         order = decision.order

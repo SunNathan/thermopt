@@ -132,6 +132,25 @@ class Ladder:
             return Order.ECO
         return max(below, key=RANK.__getitem__)
 
+    def closest_above(self, target: float) -> Order:
+        """Coldest order whose setpoint stays at or above ``target``."""
+        above = [o for o in ACTIVE_ORDERS if self.setpoint(o) >= target - 1e-9]
+        if not above:
+            return Order.COMFORT
+        return min(above, key=RANK.__getitem__)
+
+    def profile_order(self, target: float, margin: float = 0.5) -> Order:
+        """Order that best matches the comfort floor ``target``.
+
+        The nearest order wins, but never one sitting more than ``margin``
+        below the floor: otherwise the comfort guard would fire again on the
+        next cycle and pump the room back to Comfort.
+        """
+        order = self.nearest(target)
+        if self.setpoint(order) < target - margin - 1e-9:
+            return self.closest_above(target)
+        return order
+
 
 def is_colder(order: Order, than: Order) -> bool:
     """True when ``order`` is colder than ``than``."""

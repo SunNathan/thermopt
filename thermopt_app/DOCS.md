@@ -17,8 +17,9 @@ depuis ce dépôt.
 - se configure entièrement depuis l'interface web (bouton **Ouvrir l'interface
   web**), sans fichier YAML.
 
-L'optimisation tarifaire (MPC) n'est pas encore là : l'application protège, elle
-n'optimise pas.
+L'optimisation tarifaire (MPC) existe, mais reste **en observation par
+défaut** : l'application protège, et n'applique les ordres du plan que si tu
+l'actives.
 
 ## Prérequis
 
@@ -66,7 +67,23 @@ sur le tableau de bord :
   boucles pilotent le même radiateur.
 
 Le bouton du tableau de bord bascule entre `actif` et `observation`. En
-observation, les décisions sont journalisées mais aucun ordre n'est envoyé.
+observation, les décisions sont journalisées mais aucun ordre n'est envoyé :
+c'est le mode à utiliser pour reprendre la main à la main.
+
+En mode actif, ThermOpt est **autoritaire** : il applique l'ordre du profil
+(Eco la nuit, Confort−1 le matin et le soir) même si l'ordre courant a été
+réglé ailleurs — à la main, par une scène ou par une autre automatisation. Un
+changement manuel n'est donc pas conservé : passe en observation pour qu'il le
+soit.
+
+## Tableau de bord
+
+Les valeurs des pièces (température, puissance, ordre appliqué, consigne min,
+sécurité) et les cartes mode / dernier cycle / météo sont rafraîchies toutes
+les **10 secondes**, sans recharger la page. Seule la lecture change : les
+décisions restent prises au cycle de 15 minutes. Le rafraîchissement n'a lieu
+que lorsque la page est ouverte, et il ne relit dans Home Assistant que les
+entités affichées.
 
 ## Entités publiées
 
@@ -88,12 +105,17 @@ Le nom de la pièce est celui que tu as saisi, mis en minuscules sans accents.
 | Priorité | Condition | Action |
 |---|---|---|
 | 1 | `T < 7 °C` | Confort forcé, passe au-dessus du reste |
-| 2 | réglage manuel < 2 h | aucune écriture |
-| 3 | chute > 1,5 °C en 10 min | suspension 60 min |
-| 4 | `T < consigne min − 0,5` | Confort forcé |
+| 2 | chute > 1,5 °C en 10 min | suspension 60 min |
+| 3 | `T < consigne min − 0,5` | Confort forcé |
 
 Le garde-fou contourne la limite « un changement par 30 min » mais jamais le
 temps de stabilisation de 5 minutes, nécessaire au module pour décoder l'ordre.
+
+Quand aucun garde-fou n'est actif et que l'optimiseur MPC ne pilote pas,
+l'application applique l'ordre du profil à chaque cycle, dans les deux sens :
+Eco la nuit, Confort−1 le matin et le soir, Eco en journée. Elle le fait même
+si le radiateur était sur un autre ordre, et même après un redémarrage. Seule
+la limite d'un changement par 30 minutes s'applique.
 
 ## Historique et modèle
 

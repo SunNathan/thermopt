@@ -24,7 +24,7 @@ from thermopt_lib.perception.comfort import SLOT_DAY, SLOT_EVENING, SLOT_MORNING
 
 from .audit import audit
 from .config import AppConfig, RoomConfig, ladder_rows, profile_summary, validate
-from .ha import EntityState
+from .ha import EntityState, HaClient
 from .history import RETENTION_MONTHS, HistoryStore, to_csv
 from .loop import SupervisionLoop
 from .model import ModelParameters
@@ -35,6 +35,8 @@ _LOGGER = logging.getLogger(__name__)
 
 SUPERVISOR_IP = "172.30.32.2"
 INGRESS_PORT = 8099
+#: The dashboard polls every 10 s; never let one refresh block the page longer.
+TELEMETRY_TIMEOUT = 5.0
 # Under ingress an absolute "/" would send the browser to Home Assistant.
 # A relative target resolves against the current request URI instead.
 REDIRECT_HOME = "./"
@@ -64,7 +66,8 @@ class WebRuntime:
         self.started_at = datetime.now()
         self.config = config
         self.loop: SupervisionLoop | None = None
-        self.states: dict[str, EntityState] = {}
+        self.ha: HaClient | None = None
+        self._states: dict[str, EntityState] = {}
         self.ha_version = "?"
         self.ha_location = ""
         self.mqtt_connected = False
@@ -74,6 +77,48 @@ class WebRuntime:
         self.history: HistoryStore | None = None
         self.models: dict[str, ModelParameters] = {}
         self.save_models: Callable[[dict[str, ModelParameters]], None] | None = None
+        self.telemetry_error: str | None = None
+
+    # -- live Home Assistant state -------------------------------------------
+    @property
+    def states(self) -> dict[str, EntityState]:
+        """Always the client's live cache, never a startup snapshot.
+
+        ``HaClient.refresh_states`` replaces its dictionary, so keeping a
+        reference here froze the dashboard until the app restarted.
+        """
+        if self.ha is not None:
+            return self.ha.cached()
+        return self._states
+
+    @states.setter
+    def states(self, value: dict[str, EntityState]) -> None:
+        self._states = value
+
+    def telemetry_entities(self) -> list[str]:
+        """Entities the dashboard shows between two decision cycles."""
+        entities: list[str | None] = [
+            self.config.weather_entity,
+            self.config.auto_entity,
+            self.config.fallback_entity,
+        ]
+        for room in self.config.rooms:
+            entities.extend((room.temp_entity, room.power_entity, room.fil_pilote_entity))
+        return [entity for entity in entities if entity]
+
+    async def refresh_telemetry(self) -> None:
+        """Pull fresh temperatures, powers and orders, best effort."""
+        if self.ha is None:
+            return
+        try:
+            await asyncio.wait_for(
+                self.ha.refresh_entities(self.telemetry_entities()),
+                timeout=TELEMETRY_TIMEOUT,
+            )
+            self.telemetry_error = None
+        except Exception as err:  # noqa: BLE001 - the page must still render
+            self.telemetry_error = str(err) or err.__class__.__name__
+            _LOGGER.warning("Rafraîchissement des mesures en échec : %s", err)
 
     # -- derived values used by the templates --------------------------------
     @property
@@ -150,6 +195,33 @@ class WebRuntime:
             )
         return rows
 
+    def dashboard_state(self) -> dict[str, Any]:
+        """Compact payload polled by the dashboard, no full page reload."""
+        loop = self.loop
+        rooms = [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "temperature": _live_value(row["temperature"]),
+                "power": _live_value(row["power"]),
+                "order": row["order_label"] or _live_value(row["order"]),
+                "target_min": row["target_min"],
+                "prediction": row["prediction"],
+                "safety": row["safety"],
+                "safety_reason": row["safety_reason"],
+            }
+            for row in self.rooms()
+        ]
+        return {
+            "mode": loop.mode if loop else "observation",
+            "last_cycle": _iso(loop.last_cycle) if loop else None,
+            "next_cycle": _iso(loop.next_cycle_at) if loop else None,
+            "degraded": list(loop.degraded) if loop else [],
+            "weather": self.weather(),
+            "rooms": rooms,
+            "telemetry_error": self.telemetry_error,
+        }
+
 
 def _guard(request: web.Request) -> None:
     peer = request.remote
@@ -178,10 +250,20 @@ def create_app(runtime: WebRuntime) -> web.Application:
             rooms=runtime.rooms(),
             ladder=ladder_rows(runtime.config),
             cycle=runtime.loop.last_cycle if runtime.loop else None,
+            next_cycle=runtime.loop.next_cycle_at if runtime.loop else None,
             degraded=runtime.loop.degraded if runtime.loop else [],
             mode=runtime.loop.mode if runtime.loop else "observation",
             weather=runtime.weather(),
             markers=runtime.supervisor_markers,
+        )
+
+    async def state_json(request: web.Request) -> web.Response:
+        """Live room values for the dashboard's polling script."""
+        _guard(request)
+        await runtime.refresh_telemetry()
+        return web.json_response(
+            runtime.dashboard_state(),
+            headers={"Cache-Control": "no-store"},
         )
 
     async def acknowledge(request: web.Request) -> web.Response:
@@ -417,6 +499,7 @@ def create_app(runtime: WebRuntime) -> web.Application:
     app = web.Application()
     app["runtime"] = runtime
     app.router.add_get("/", index)
+    app.router.add_get("/state.json", state_json)
     app.router.add_get("/config", config_page)
     app.router.add_post("/config", config_save)
     app.router.add_post("/active", toggle_active)
@@ -456,6 +539,20 @@ def _label_for(state: str) -> str | None:
     """Human label of a fil pilote order read from an entity state."""
     order = order_from_z2m(state)
     return LABELS_FR.get(order) if order else None
+
+
+def _live_value(value: Any) -> str | None:
+    """Raw entity state, or ``None`` when it is not usable."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in ("unavailable", "unknown", "none"):
+        return None
+    return text
+
+
+def _iso(moment: datetime | None) -> str | None:
+    return moment.isoformat(timespec="seconds") if moment is not None else None
 
 
 def _parse_date(value: Any) -> datetime | None:

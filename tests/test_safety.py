@@ -12,7 +12,6 @@ from thermopt_lib.core.safety import (
     detect_window,
     evaluate,
     guard_thresholds,
-    manual_hold,
 )
 
 NOW = datetime(2026, 1, 5, 3, 0)  # Monday, 03:00
@@ -27,7 +26,6 @@ def decision(**overrides):
         "current": Order.ECO,
         "armed": False,
         "suspended_until": None,
-        "manual_hold_until": None,
         "window_open": False,
     }
     kwargs.update(overrides)
@@ -81,24 +79,11 @@ def test_hysteresis_releases_above_the_release_threshold() -> None:
 def test_frost_wins_over_everything() -> None:
     result = decision(
         t_air=ABSOLUTE_FLOOR - 1,
-        manual_hold_until=NOW + timedelta(hours=1),
         suspended_until=NOW + timedelta(minutes=30),
     )
     assert result.state is SafetyState.FROST
     assert result.order is Order.COMFORT
     assert result.escalate is True
-
-
-def test_manual_hold_blocks_the_floor_guard() -> None:
-    result = decision(t_air=16.0, manual_hold_until=NOW + timedelta(minutes=30))
-    assert result.state is SafetyState.MANUAL
-    assert result.order is None
-
-
-def test_manual_hold_expires() -> None:
-    result = decision(t_air=16.0, manual_hold_until=NOW - timedelta(minutes=1))
-    assert result.state is SafetyState.FLOOR
-    assert result.order is Order.COMFORT
 
 
 def test_suspension_blocks_writes() -> None:
@@ -141,7 +126,3 @@ def test_detect_window_ignores_missing_values() -> None:
 def test_detect_window_no_drop() -> None:
     samples = [(0.0, 20.0), (300.0, 20.3), (600.0, 20.1)]
     assert detect_window(samples, NOW) is False
-
-
-def test_manual_hold_duration() -> None:
-    assert manual_hold(NOW) == NOW + timedelta(minutes=120)

@@ -236,6 +236,106 @@ def test_weather_card_handles_a_missing_attribute() -> None:
     assert runtime.weather()["temperature"] is None
 
 
+# ---------------------------------------------------------------------------
+# Live dashboard
+# ---------------------------------------------------------------------------
+def test_states_follow_the_live_home_assistant_cache() -> None:
+    from app.ha import EntityState
+
+    class _Ha:
+        def __init__(self) -> None:
+            self.cache: dict = {}
+
+        def cached(self) -> dict:
+            return self.cache
+
+    runtime = _runtime()
+    ha = _Ha()
+    runtime.ha = ha  # type: ignore[assignment]
+
+    ha.cache["sensor.salon_temperature"] = EntityState("sensor.salon_temperature", "20.4", {})
+    assert runtime.states["sensor.salon_temperature"].state == "20.4"
+
+    ha.cache["sensor.salon_temperature"] = EntityState("sensor.salon_temperature", "20.9", {})
+    assert runtime.states["sensor.salon_temperature"].state == "20.9"
+
+    # Without an HA client (tests, startup), the setter still feeds the pages.
+    other = _runtime()
+    other.states = {"sensor.x": EntityState("sensor.x", "1", {})}
+    assert "sensor.x" in other.states
+
+
+async def test_state_json_exposes_the_room_values() -> None:
+    from app.ha import EntityState
+
+    runtime = _runtime()
+    runtime.states = {
+        "sensor.salon_temperature": EntityState("sensor.salon_temperature", "20.4", {}),
+        "select.salon_pilot_wire_mode": EntityState("select.salon_pilot_wire_mode", "comfort", {}),
+    }
+
+    client = await _client(runtime)
+    try:
+        response = await client.get("/state.json")
+        assert response.status == 200
+        assert response.headers["Cache-Control"] == "no-store"
+
+        data = await response.json()
+        assert data["mode"] == "observation"
+        assert data["rooms"][0]["temperature"] == "20.4"
+        assert data["rooms"][0]["order"] == "Confort"
+    finally:
+        await client.close()
+
+
+async def test_state_json_refreshes_the_dashboard_entities() -> None:
+    from app.ha import EntityState
+
+    class _Ha:
+        def __init__(self) -> None:
+            self.cache: dict = {}
+            self.refreshed: list[str] = []
+
+        def cached(self) -> dict:
+            return self.cache
+
+        async def refresh_entities(self, entity_ids) -> None:
+            self.refreshed.extend(entity_ids)
+            self.cache["sensor.salon_temperature"] = EntityState(
+                "sensor.salon_temperature", "21.5", {}
+            )
+
+    runtime = _runtime()
+    ha = _Ha()
+    runtime.ha = ha  # type: ignore[assignment]
+
+    client = await _client(runtime)
+    try:
+        data = await (await client.get("/state.json")).json()
+
+        assert "sensor.salon_temperature" in ha.refreshed
+        assert "select.salon_pilot_wire_mode" in ha.refreshed
+        assert data["rooms"][0]["temperature"] == "21.5"
+    finally:
+        await client.close()
+
+
+async def test_dashboard_polls_the_state_endpoint() -> None:
+    runtime = _runtime()
+
+    client = await _client(runtime)
+    try:
+        body = await (await client.get("/")).text()
+
+        assert 'data-room="abc"' in body
+        assert "state.json" in body
+        assert 'data-field="temperature"' in body
+        assert 'data-field="power"' in body
+        assert 'data-field="order"' in body
+    finally:
+        await client.close()
+
+
 async def test_optimizer_flag_is_persisted() -> None:
     runtime = _runtime()
     saved: list = []
@@ -323,6 +423,7 @@ class _LoopStub:
     def __init__(self) -> None:
         self.mode = "actif"
         self.last_cycle = None
+        self.next_cycle_at = None
         self.last_snapshot = None
         self.degraded: list[str] = []
         self.forecast_count = 0

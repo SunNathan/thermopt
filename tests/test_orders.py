@@ -79,6 +79,34 @@ def test_closest_below() -> None:
     assert ladder.closest_below(17.2) is Order.ECO
 
 
+def test_closest_above() -> None:
+    ladder = Ladder(comfort=20.5)
+    assert ladder.closest_above(19.5) is Order.COMFORT_1
+    assert ladder.closest_above(18.0) is Order.COMFORT_2
+    assert ladder.closest_above(22.0) is Order.COMFORT
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        (19.5, Order.COMFORT_1),  # evening: exactly on the ladder
+        (17.0, Order.ECO),  # night: exactly Eco
+        (17.5, Order.ECO),  # 0.5 below the floor: still within the guard margin
+        (17.6, Order.COMFORT_2),  # would underheat by 0.6: stay above
+        (18.0, Order.COMFORT_2),
+        (20.4, Order.COMFORT),
+        (22.0, Order.COMFORT),
+    ],
+)
+def test_profile_order(target: float, expected: Order) -> None:
+    assert Ladder(comfort=20.5).profile_order(target) is expected
+
+
+def test_profile_order_with_explicit_eco() -> None:
+    ladder = Ladder(comfort=20.5, eco=17.5)
+    assert ladder.profile_order(17.5) is Order.ECO
+
+
 def test_rank_comparison() -> None:
     assert is_colder(Order.ECO, Order.COMFORT)
     assert not is_colder(Order.COMFORT, Order.ECO)

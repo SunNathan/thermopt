@@ -51,3 +51,55 @@ def test_skips_invalid_dates() -> None:
         "service_response": {ENTITY: {"forecast": [{"datetime": "pas une date", "temperature": 3}]}}
     }
     assert extract_forecast(payload, ENTITY) == []
+
+
+# ---------------------------------------------------------------------------
+# Targeted refresh (dashboard polling)
+# ---------------------------------------------------------------------------
+class _Api:
+    """Stand-in for SupervisorClient.get."""
+
+    def __init__(self, payloads: dict) -> None:
+        self.payloads = payloads
+        self.calls: list[str] = []
+
+    async def get(self, path: str) -> object:
+        self.calls.append(path)
+        value = self.payloads[path]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+async def test_refresh_entities_merges_the_requested_ones() -> None:
+    from app.ha import EntityState, HaClient
+    from app.supervisor import SupervisorError
+
+    api = _Api(
+        {
+            "/core/api/states/sensor.t": {
+                "entity_id": "sensor.t",
+                "state": "20.4",
+                "attributes": {"unit_of_measurement": "°C"},
+            },
+            "/core/api/states/sensor.gone": SupervisorError("404"),
+        }
+    )
+    ha = HaClient(api)  # type: ignore[arg-type]
+    ha._states = {"sensor.other": EntityState("sensor.other", "1", {})}
+
+    await ha.refresh_entities(["sensor.t", "sensor.gone", "sensor.t"])
+
+    assert ha.cached()["sensor.t"].state == "20.4"
+    assert ha.cached()["sensor.other"].state == "1"  # untouched
+    assert len([call for call in api.calls if call.endswith("sensor.t")]) == 1
+
+
+async def test_refresh_entities_ignores_garbage() -> None:
+    from app.ha import HaClient
+
+    api = _Api({"/core/api/states/sensor.t": "nope"})
+    ha = HaClient(api)  # type: ignore[arg-type]
+
+    await ha.refresh_entities(["sensor.t"])
+    assert ha.cached() == {}

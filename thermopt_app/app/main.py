@@ -151,7 +151,7 @@ async def run() -> None:
 
         ha = HaClient(client)
         await ha.refresh_states()
-        runtime.states = ha.cached()
+        runtime.ha = ha
 
         try:
             credentials = await client.mqtt_service()

@@ -29,7 +29,7 @@
 <div class="cards">
   <div class="card">
     <h2>Mode</h2>
-    <div class="value {{ 'ok' if mode == 'actif' else 'ko' }}">{{ mode }}</div>
+    <div class="value {{ 'ok' if mode == 'actif' else 'ko' }}" data-field="mode">{{ mode }}</div>
     <div class="muted">
       {{ "les garde-fous peuvent écrire" if mode == "actif" else "aucune écriture" }}
     </div>
@@ -40,13 +40,14 @@
 
   <div class="card">
     <h2>Dernier cycle</h2>
-    <div class="value">{{ cycle.strftime("%H:%M") if cycle else "—" }}</div>
-    <div class="muted">{{ degraded | length }} alerte(s)</div>
+    <div class="value" data-field="last_cycle">{{ cycle.strftime("%H:%M") if cycle else "—" }}</div>
+    <div class="muted"><span data-field="degraded_count">{{ degraded | length }}</span> alerte(s)</div>
+    <div class="muted">prochaine décision à <span data-field="next_cycle">{{ next_cycle.strftime("%H:%M") if next_cycle else "—" }}</span></div>
   </div>
 
   <div class="card">
     <h2>Météo</h2>
-    <div class="value">{{ weather.temperature if weather.temperature is not none else "—" }} °C</div>
+    <div class="value" data-field="weather_temperature">{{ weather.temperature if weather.temperature is not none else "—" }} °C</div>
     <div class="muted">
       {% if weather.entity %}<code>{{ weather.entity }}</code>{% else %}aucune entité configurée{% endif %}
       {% if weather.state %} · {{ weather.state }}{% endif %}
@@ -86,14 +87,14 @@
   </thead>
   <tbody>
   {% for room in rooms %}
-    <tr>
+    <tr data-room="{{ room.id }}">
       <td><strong>{{ room.name }}</strong></td>
-      <td>{{ room.temperature or "—" }}</td>
-      <td>{{ room.target_min if room.target_min is defined else "—" }}</td>
-      <td>{{ room.order_label or room.order or "—" }}</td>
-      <td>{{ room.power or "—" }}</td>
-      <td>{{ room.prediction if room.prediction is not none else "—" }}</td>
-      <td>{{ room.safety }}{% if room.safety_reason %} <span class="muted">— {{ room.safety_reason }}</span>{% endif %}</td>
+      <td data-field="temperature">{{ room.temperature or "—" }}</td>
+      <td data-field="target_min">{{ room.target_min if room.target_min is defined else "—" }}</td>
+      <td data-field="order">{{ room.order_label or room.order or "—" }}</td>
+      <td data-field="power">{{ room.power or "—" }}</td>
+      <td data-field="prediction">{{ room.prediction if room.prediction is not none else "—" }}</td>
+      <td><span data-field="safety">{{ room.safety }}</span> <span class="muted" data-field="safety_reason">{% if room.safety_reason %}— {{ room.safety_reason }}{% endif %}</span></td>
     </tr>
   {% endfor %}
   </tbody>
@@ -116,4 +117,90 @@
   du radiateur — c'est elle qui décale toute l'échelle.
 </div>
 
+<div class="muted" data-field="live" style="margin-top:16px"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const REFRESH_MS = 10000;
+  const base = location.pathname.endsWith("/") ? location.pathname : location.pathname + "/";
+  const endpoint = base + "state.json";
+  const live = document.querySelector('[data-field="live"]');
+  let busy = false;
+
+  function setText(root, field, value) {
+    const node = root.querySelector('[data-field="' + field + '"]');
+    if (!node) return;
+    node.textContent = (value === null || value === undefined || value === "") ? "—" : value;
+  }
+
+  function setMode(mode) {
+    const node = document.querySelector('[data-field="mode"]');
+    if (!node) return;
+    node.textContent = mode;
+    node.className = "value " + (mode === "actif" ? "ok" : "ko");
+  }
+
+  function clock(iso) {
+    return iso ? iso.slice(11, 16) : "—";
+  }
+
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    try {
+      const response = await fetch(endpoint, { cache: "no-store" });
+      if (!response.ok) throw new Error(response.status);
+      const data = await response.json();
+
+      setMode(data.mode);
+      setText(document, "last_cycle", clock(data.last_cycle));
+      setText(document, "next_cycle", clock(data.next_cycle));
+      setText(document, "degraded_count", data.degraded.length);
+      setText(
+        document,
+        "weather_temperature",
+        (data.weather.temperature === null || data.weather.temperature === undefined)
+          ? "—"
+          : data.weather.temperature + " °C"
+      );
+
+      if (data.rooms.length !== document.querySelectorAll("tr[data-room]").length) {
+        location.reload();
+        return;
+      }
+      for (const room of data.rooms) {
+        const row = document.querySelector('tr[data-room="' + room.id + '"]');
+        if (!row) continue;
+        setText(row, "temperature", room.temperature);
+        setText(row, "target_min", room.target_min);
+        setText(row, "order", room.order);
+        setText(row, "power", room.power);
+        setText(row, "prediction", room.prediction);
+        setText(row, "safety", room.safety);
+        const reason = row.querySelector('[data-field="safety_reason"]');
+        if (reason) reason.textContent = room.safety_reason ? "— " + room.safety_reason : "";
+      }
+
+      if (live) {
+        live.textContent = data.telemetry_error
+          ? "Mesures indisponibles : " + data.telemetry_error
+          : "Actualisé à " + new Date().toLocaleTimeString("fr-FR");
+      }
+    } catch (error) {
+      if (live) live.textContent = "Hors ligne — dernière valeur connue";
+    } finally {
+      busy = false;
+    }
+  }
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) refresh();
+  });
+})();
+</script>
 {% endblock %}

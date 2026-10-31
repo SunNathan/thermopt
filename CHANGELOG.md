@@ -1,10 +1,41 @@
 # Changelog
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le
-versionnage sémantique. La version de `custom_components/thermopt/manifest.json`
-doit toujours correspondre au tag publié.
+versionnage sémantique. La version de `thermopt_app/config.yaml` doit toujours
+correspondre au tag publié.
 
 ## [Unreleased]
+
+## [0.7.0] — 2026-10-31
+
+### Ajouté
+
+- **Tableau de bord vivant** : la page interroge `state.json` toutes les 10 s et
+  met à jour sans rechargement la température, la puissance, l'ordre appliqué,
+  la consigne min, la prévision, la sécurité et le dernier cycle. Seules les
+  mesures utiles sont relues dans Home Assistant à chaque appel.
+
+### Modifié
+
+- **Mode actif autoritaire** : ThermOpt applique l'ordre du profil dans les
+  deux sens (Eco la nuit et en journée, Confort−1 le matin et le soir), même si
+  l'ordre courant a été réglé à la main, par une scène ou par une autre
+  automatisation. Le gel manuel de 2 h et l'état `override` sont supprimés : le
+  mode observation est désormais la façon de reprendre la main.
+
+### Corrigé
+
+- **Ordre de chauffage jamais redescendu** : quand le garde-fou forçait Confort
+  et que la cible baissait (nuit, fin de préchauffage), rien ne ramenait le
+  radiateur vers Eco tant que l'optimiseur n'était pas actif. Sans optimiseur,
+  ThermOpt applique désormais l'ordre du profil à chaque cycle, sous la limite
+  d'un changement par 30 min.
+- **Tableau de bord figé** : température, puissance et ordre appliqué étaient
+  lus dans un instantané pris au démarrage (le cache HA remplace son
+  dictionnaire à chaque rafraîchissement). La page lit maintenant le cache
+  vivant, et un rafraîchissement ciblé est déclenché à chaque interrogation.
+
+## [0.6.0] — 2026-10-30
 
 ### Modifié
 

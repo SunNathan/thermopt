@@ -284,7 +284,7 @@ Priorité maximale, non contournable par l'optimiseur :
 4. **Cohérence capteur/modèle** : si |T_prédite_1h − T_mesurée| > 3 °C à 3 reprises consécutives → modèle désactivé (retour en excitation/revalidation), repli activé.
 5. **Watchdog applicatif** : si le cycle MPC ne s'exécute pas depuis > 20 min (crash de l'extension), le repli prend le relais automatiquement (détecté par une automatisation HA native indépendante de l'extension).
 6. **Fenêtre ouverte** : chute de T > 1,5 °C en 10 min → suspendre l'optimisation de la pièce pendant 60 min (laisser le SOKIO gérer), puis reprise.
-7. **Mode manuel** : un `input_boolean` global **auto/manuel** ; en manuel, l'extension n'écrit jamais les ordres. Toute modification manuelle d'un ordre pendant le mode auto est respectée pendant 2 h avant reprise (détection de « présence de l'utilisateur dans la pièce » à terme : capteur de mouvement, si ajouté).
+7. **Mode manuel** : un `input_boolean` global **auto/manuel** ; en manuel, l'extension n'écrit jamais les ordres. En mode auto, ThermOpt est autoritaire : il applique l'ordre du profil à chaque cycle même si l'ordre courant a été réglé à la main. Pour reprendre la main, on passe en mode manuel / observation (choix retenu à la place du gel manuel de 2 h, qui retardait l'application du profil et bloquait l'optimiseur).
 
 ### 7.2 Exécution (couche 5)
 

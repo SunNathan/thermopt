@@ -7,7 +7,10 @@ Priority is absolute and never negotiable against money:
 
 1. frost protection (below ``ABSOLUTE_FLOOR``)  -> Confort, always
 2. comfort floor (below ``T_min - GUARD_MARGIN``) -> Confort
-3. open window / manual override -> no write, let the situation settle
+3. open window -> no write, let the situation settle
+
+Manual changes are not tracked here: in active mode ThermOpt is authoritative,
+and observation mode is the way to take the radiator back by hand.
 """
 
 from __future__ import annotations
@@ -26,8 +29,6 @@ GUARD_HYSTERESIS = 0.3  # released above T_min - GUARD_MARGIN + HYSTERESIS
 WINDOW_DROP = 1.5  # °C lost during ...
 WINDOW_SECONDS = 10 * 60  # ... this window => open window
 WINDOW_SUSPEND_MINUTES = 60  # let the radiator handle it
-MANUAL_HOLD_MINUTES = 120  # respect a manual change for 2 h
-MANUAL_WRITE_GRACE = 90  # seconds to let MQTT reflect our own write
 EFFECT_CHECK_MINUTES = 15
 EFFECT_MIN_POWER = 5.0  # W, below this the radiator is not heating
 
@@ -39,7 +40,6 @@ class SafetyState(StrEnum):
     FLOOR = "plancher"
     FROST = "hors_gel"
     WINDOW = "fenetre"
-    MANUAL = "override"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,14 +78,12 @@ def evaluate(
     current: Order | None,
     armed: bool,
     suspended_until: datetime | None,
-    manual_hold_until: datetime | None,
     window_open: bool,
 ) -> SafetyDecision:
     """Decide whether the safety layer must force an order.
 
-    The frost guard wins over everything, including a manual override or an
-    open window: a room close to freezing must be heated whatever the user or
-    the house is doing.
+    The frost guard wins over everything, including an open window: a room
+    close to freezing must be heated whatever the house is doing.
     """
     if t_air is not None and t_air < ABSOLUTE_FLOOR:
         return SafetyDecision(
@@ -94,13 +92,6 @@ def evaluate(
             escalate=True,
             armed=True,
             reason=f"Température {t_air:.1f} °C sous le hors-gel absolu ({ABSOLUTE_FLOOR:.0f} °C)",
-        )
-
-    if manual_hold_until is not None and now < manual_hold_until:
-        return SafetyDecision(
-            state=SafetyState.MANUAL,
-            armed=armed,
-            reason=(f"Réglage manuel respecté jusqu'à {manual_hold_until.strftime('%H:%M')}"),
         )
 
     if suspended_until is not None and now < suspended_until:
@@ -152,18 +143,12 @@ def evaluate(
     return SafetyDecision(armed=False, reason="Borne de confort respectée")
 
 
-def manual_hold(now: datetime) -> datetime:
-    """End date of a manual override started at ``now``."""
-    return now + timedelta(minutes=MANUAL_HOLD_MINUTES)
-
-
 __all__ = [
     "SafetyDecision",
     "SafetyState",
     "detect_window",
     "evaluate",
     "guard_thresholds",
-    "manual_hold",
     "WINDOW_SECONDS",
     "WINDOW_DROP",
 ]

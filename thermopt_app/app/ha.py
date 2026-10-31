@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,6 +39,21 @@ class EntityState:
             return None
 
 
+def _parse_state(item: object) -> EntityState | None:
+    """Read one entity out of a REST ``/states`` payload."""
+    if not isinstance(item, dict):
+        return None
+    entity_id = item.get("entity_id")
+    if not isinstance(entity_id, str):
+        return None
+    attributes = item.get("attributes")
+    return EntityState(
+        entity_id=entity_id,
+        state=str(item.get("state", "")),
+        attributes=attributes if isinstance(attributes, dict) else {},
+    )
+
+
 class HaClient:
     """Everything the app needs from Home Assistant, and nothing more."""
 
@@ -54,21 +70,31 @@ class HaClient:
 
         states: dict[str, EntityState] = {}
         for item in payload:
-            if not isinstance(item, dict):
-                continue
-            entity_id = item.get("entity_id")
-            if not isinstance(entity_id, str):
-                continue
-            attributes = item.get("attributes")
-            states[entity_id] = EntityState(
-                entity_id=entity_id,
-                state=str(item.get("state", "")),
-                attributes=attributes if isinstance(attributes, dict) else {},
-            )
+            state = _parse_state(item)
+            if state is not None:
+                states[state.entity_id] = state
 
         self._states = states
         self._fetched_at = time.monotonic()
         return states
+
+    async def refresh_entities(self, entity_ids: Iterable[str]) -> None:
+        """Refresh a handful of entities, keeping the rest of the cache.
+
+        The dashboard polls between two decision cycles; fetching the whole
+        state machine every ten seconds would be needlessly heavy on a Pi.
+        Missing entities are ignored: the previous value stays until the next
+        full refresh.
+        """
+        for entity_id in dict.fromkeys(entity_ids):
+            try:
+                payload = await self._api.get(f"/core/api/states/{entity_id}")
+            except SupervisorError as err:
+                _LOGGER.debug("État %s indisponible : %s", entity_id, err)
+                continue
+            state = _parse_state(payload)
+            if state is not None:
+                self._states[entity_id] = state
 
     async def states(self) -> dict[str, EntityState]:
         if time.monotonic() - self._fetched_at > STATES_TTL:

@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import numpy as np
+import pytest
 
 from app.audit import MIN_DAYS, audit
-from app.model import build_series, fit, predict, simulate
+from app.model import ModelParameters, build_series, fit, predict, simulate, step
 
 START = datetime(2026, 1, 1, 0, 0)
 STEP = timedelta(minutes=15)
@@ -163,3 +164,104 @@ def test_parameters_roundtrip() -> None:
     assert restored is not None
     assert restored.a1 == params.a1
     assert restored.order_power == params.order_power
+
+
+# ---------------------------------------------------------------------------
+# Robustness: gaps, structures, weighting
+# ---------------------------------------------------------------------------
+def _arx1_records(days: int = 20, seed: int = 3) -> list[dict]:
+    """A first-order process: the second order has nothing to learn."""
+    rng = np.random.default_rng(seed)
+    steps = days * 96
+    t_ext = 7.0 + rng.normal(0, 0.4, steps)
+    power = np.zeros(steps)
+    orders: list[str] = []
+    for index in range(steps):
+        order = "comfort" if (index // 8) % 2 == 0 else "eco"
+        orders.append(order)
+        power[index] = 900.0 if order == "comfort" else 0.0
+
+    t_air = np.zeros(steps)
+    t_air[0] = 19.0
+    for k in range(1, steps):
+        t_air[k] = 0.96 * t_air[k - 1] + 0.03 * t_ext[k - 1] + 0.0004 * power[k - 1] + 0.15
+        t_air[k] += rng.normal(0, 0.01)
+
+    return [
+        {
+            "ts": (START + k * STEP).isoformat(timespec="seconds"),
+            "room": "Salon",
+            "t_air": round(float(t_air[k]), 3),
+            "t_ext": round(float(t_ext[k]), 3),
+            "order": orders[k],
+            "power": float(power[k]),
+            "energy": None,
+            "target_min": 19.5,
+        }
+        for k in range(steps)
+    ]
+
+
+def test_gaps_split_the_series_into_segments() -> None:
+    records = _records(20)
+    # remove a 3 h chunk in the middle
+    holed = records[:500] + records[512:]
+    series = build_series(holed)
+
+    assert len(series) == len(holed)
+    assert len(series.segments) == 2
+    assert series.segments[0] == (0, 500)
+    assert series.segments[1] == (500, len(holed))
+
+
+def test_fit_ignores_segment_boundaries() -> None:
+    """A gap must not be crossed by the regression."""
+    records = _records(20)
+    holed = records[:900] + records[1200:]
+    params, errors = fit(holed)
+
+    assert params is not None, errors
+    assert params.segments == 2
+
+
+def test_first_order_process_selects_the_first_order_model() -> None:
+    params, errors = fit(_arx1_records(20))
+
+    assert params is not None, errors
+    assert params.structure == "arx1"
+    assert 0 < params.a1 < 1
+    assert params.rmse_12h <= 0.5
+
+
+def test_step_handles_both_structures() -> None:
+    arx2 = ModelParameters(
+        a1=1.5, a2=-0.55, be=0.05, bp=0.0005, c=0.2, rmse_12h=0.1, samples=10, fitted_at=""
+    )
+    arx1 = ModelParameters(
+        a1=0.97,
+        a2=0.0,
+        be=0.03,
+        bp=0.0004,
+        c=0.1,
+        rmse_12h=0.1,
+        samples=10,
+        fitted_at="",
+        structure="arx1",
+    )
+
+    assert step(arx2, 19.0, 19.5, 8.0, 500.0) == pytest.approx(
+        1.5 * 19.5 - 0.55 * 19.0 + 0.05 * 8.0 + 0.0005 * 500.0 + 0.2
+    )
+    assert step(arx1, 19.0, 19.5, 8.0, 500.0) == pytest.approx(
+        0.97 * 19.5 + 0.03 * 8.0 + 0.0004 * 500.0 + 0.1
+    )
+
+
+def test_parameters_roundtrip_keeps_the_structure() -> None:
+    params, _errors = fit(_arx1_records(20))
+    assert params is not None
+
+    restored = ModelParameters.from_dict(params.to_dict())
+    assert restored is not None
+    assert restored.structure == params.structure
+    assert restored.segments == params.segments

@@ -6,6 +6,35 @@ correspondre au tag publié.
 
 ## [Unreleased]
 
+### Corrigé
+
+- **Export CSV en erreur 500** : les bornes de dates étaient construites naïves
+  alors que les horodatages enregistrés portent le fuseau. Elles sont désormais
+  construites dans le fuseau de Home Assistant, et la date de fin est inclusive.
+- **Identification rejetée sur données réelles** : la série est maintenant
+  découpée en segments contigus (trou > 22 min), l'ajustement et la validation
+  ne franchissent plus un trou.
+- **Coefficients hors du domaine physique** : un ARX d'ordre 1 est tenté en
+  plus de l'ordre 2, et c'est celui qui prédit le mieux sur 12 h qui est retenu.
+  Une pièce tenue à consigne constante n'a pas assez d'excitation pour un
+  ordre 2 ; l'ordre 1 y est bien mieux conditionné.
+- Les échantillons en phase d'excitation (variation de puissance > 50 W ou de
+  température > 0,15 K) pèsent trois fois plus dans la régression, pour que les
+  longues plages à consigne constante ne noient pas le signal.
+
+### Ajouté
+
+- **Identification par pièce** : un bouton par pièce, en plus du bouton global.
+- **Diagnostic du modèle** : structure retenue, échantillons, segments,
+  coefficients, RMSE et causes d'échec affichés sous chaque pièce.
+- **Garde-fous sur l'historique** : refus de purger si l'horloge système semble
+  aberrante, journalisation de chaque suppression, et log au démarrage indiquant
+  les fichiers et la plage conservés.
+
+### Modifié
+
+- Version portée à **0.7.0**.
+
 ## [0.7.0] — 2026-10-31
 
 ### Ajouté

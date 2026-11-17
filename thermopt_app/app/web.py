@@ -12,7 +12,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +68,7 @@ class WebRuntime:
         self.loop: SupervisionLoop | None = None
         self.ha: HaClient | None = None
         self._states: dict[str, EntityState] = {}
+        self.timezone = None
         self.ha_version = "?"
         self.ha_location = ""
         self.mqtt_connected = False
@@ -76,6 +77,7 @@ class WebRuntime:
         self.save_config: Callable[[AppConfig], None] | None = None
         self.history: HistoryStore | None = None
         self.models: dict[str, ModelParameters] = {}
+        self.fit_errors: dict[str, list[str]] = {}
         self.save_models: Callable[[dict[str, ModelParameters]], None] | None = None
         self.telemetry_error: str | None = None
 
@@ -410,12 +412,12 @@ def create_app(runtime: WebRuntime) -> web.Application:
                     "name": room.name,
                     "report": audit(records, room.name),
                     "model": runtime.models.get(room.id),
+                    "errors": runtime.fit_errors.get(room.id, []),
                 }
             )
         return rows
 
-    async def history_page(request: web.Request) -> web.Response:
-        _guard(request)
+    async def _render_history(message: str | None = None) -> web.Response:
         if runtime.history is not None:
             runtime.history.refresh_disk()
         return render(
@@ -423,58 +425,68 @@ def create_app(runtime: WebRuntime) -> web.Application:
             active="history",
             rows=await _history_rows(),
             errors=[],
-            message=None,
+            message=message,
             size=runtime.history.size() if runtime.history else 0,
             free=runtime.history.free_bytes if runtime.history else None,
             months=runtime.history.file_range() if runtime.history else None,
             retention=RETENTION_MONTHS,
         )
 
+    async def _fit_room(room) -> ModelParameters | None:
+        """Audit then fit one room; store the errors for the page."""
+        runtime.fit_errors[room.id] = []
+        if runtime.history is None:
+            runtime.fit_errors[room.id] = ["historique indisponible"]
+            return None
+
+        records = await runtime.history.async_read(room=room.id)
+        report = audit(records, room.name)
+        if not report.ok:
+            runtime.fit_errors[room.id] = list(report.missing)
+            return None
+
+        params, problems = fit_model(records)
+        if params is None:
+            runtime.fit_errors[room.id] = problems
+            return None
+
+        runtime.models[room.id] = params
+        if runtime.save_models is not None:
+            runtime.save_models(runtime.models)
+        if runtime.loop is not None:
+            runtime.loop.models[room.id] = params
+        return params
+
+    async def history_page(request: web.Request) -> web.Response:
+        _guard(request)
+        return await _render_history()
+
     async def history_fit(request: web.Request) -> web.Response:
         _guard(request)
-        rows = await _history_rows()
-        errors: list[str] = []
-        fitted: dict[str, ModelParameters] = {}
+        fitted = 0
+        for room in runtime.config.rooms:
+            if await _fit_room(room) is not None:
+                fitted += 1
+        return await _render_history(f"{fitted} modèle(s) identifié(s)." if fitted else None)
 
-        if runtime.history is not None:
-            for room in runtime.config.rooms:
-                records = await runtime.history.async_read(room=room.id)
-                report = audit(records, room.name)
-                if not report.ok:
-                    errors.extend(f"{room.name} : {item}" for item in report.missing)
-                    continue
-                params, problems = fit_model(records)
-                if params is None:
-                    errors.extend(f"{room.name} : {item}" for item in problems)
-                else:
-                    fitted[room.id] = params
-
-        if fitted:
-            runtime.models.update(fitted)
-            if runtime.save_models is not None:
-                runtime.save_models(runtime.models)
-            if runtime.loop is not None:
-                runtime.loop.models.update(fitted)
-
-        rows = await _history_rows()
-        return render(
-            "history.html",
-            active="history",
-            rows=rows,
-            errors=errors,
-            message=(f"{len(fitted)} modèle(s) identifié(s)." if fitted else None),
-            size=runtime.history.size() if runtime.history else 0,
-            free=runtime.history.free_bytes if runtime.history else None,
-            months=runtime.history.file_range() if runtime.history else None,
-            retention=RETENTION_MONTHS,
+    async def history_fit_one(request: web.Request) -> web.Response:
+        _guard(request)
+        room = runtime.config.room(request.match_info["room_id"])
+        if room is None:
+            raise web.HTTPNotFound()
+        params = await _fit_room(room)
+        return await _render_history(
+            f"{room.name} : modèle identifié." if params is not None else None
         )
 
     async def history_export(request: web.Request) -> web.Response:
         _guard(request)
         if runtime.history is None:
             raise web.HTTPNotFound()
-        since = _parse_date(request.query.get("since"))
-        until = _parse_date(request.query.get("until"))
+        since = _parse_date(request.query.get("since"), runtime.timezone)
+        until = _parse_date(request.query.get("until"), runtime.timezone)
+        if until is not None:
+            until = until + timedelta(days=1)  # the end date is inclusive
         records = await runtime.history.async_read(since=since, until=until)
         body = to_csv(records)
         return web.Response(
@@ -507,6 +519,7 @@ def create_app(runtime: WebRuntime) -> web.Application:
     app.router.add_get("/plan", plan_page)
     app.router.add_get("/history", history_page)
     app.router.add_post("/history/fit", history_fit)
+    app.router.add_post("/history/fit/{room_id}", history_fit_one)
     app.router.add_get("/history/export.csv", history_export)
     app.router.add_get("/health", health)
     return app
@@ -555,15 +568,22 @@ def _iso(moment: datetime | None) -> str | None:
     return moment.isoformat(timespec="seconds") if moment is not None else None
 
 
-def _parse_date(value: Any) -> datetime | None:
-    """Accept YYYY-MM-DD from an <input type=date>."""
+def _parse_date(value: Any, tz: Any = None) -> datetime | None:
+    """Accept YYYY-MM-DD from an <input type=date>, in Home Assistant's timezone.
+
+    The stored timestamps are timezone-aware; a naive bound would raise
+    "can't compare offset-naive and offset-aware datetimes".
+    """
     text = str(value).strip() if value else ""
     if not text:
         return None
     try:
-        return datetime.fromisoformat(text)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
+    if tz is not None:
+        parsed = parsed.replace(tzinfo=tz)
+    return parsed
 
 
 def _optional_number(value: Any) -> float | None:

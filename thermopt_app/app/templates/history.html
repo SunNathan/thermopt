@@ -90,30 +90,51 @@
   </table>
   {% endif %}
 
-  {% if report.missing %}
+  {% if row.errors %}
+  <div class="banner warn" style="margin-top:14px">
+    <strong>Identification impossible</strong>
+    <ul class="errors">{% for item in row.errors %}<li>{{ item }}</li>{% endfor %}</ul>
+    <div class="muted" style="margin-top:8px">
+      L'application refuse d'enregistrer un modèle que les données ne permettent pas de valider.
+    </div>
+  </div>
+  {% elif report.missing %}
   <div class="banner warn" style="margin-top:14px">
     <strong>Données insuffisantes</strong>
     <ul class="errors">{% for item in report.missing %}<li>{{ item }}</li>{% endfor %}</ul>
   </div>
   {% elif row.model %}
   <div class="banner ok" style="margin-top:14px">
-    <strong>Modèle identifié</strong> — RMSE 12 h : {{ row.model.rmse_12h }} °C
+    <strong>Modèle identifié</strong> — {{ row.model.structure | upper }},
+    RMSE 12 h : {{ row.model.rmse_12h }} °C
   </div>
   <table>
     <tbody>
+      <tr><td>Structure</td><td>{{ row.model.structure | upper }}</td></tr>
+      <tr><td>Échantillons / segments</td><td>{{ row.model.samples }} / {{ row.model.segments }}</td></tr>
+      <tr><td>Coefficients</td>
+          <td>a1={{ "%.4f" | format(row.model.a1) }}{% if row.model.structure == "arx2" %},
+              a2={{ "%.4f" | format(row.model.a2) }}{% endif %},
+              be={{ "%.4f" | format(row.model.be) }},
+              bp={{ "%.6f" | format(row.model.bp) }}</td></tr>
       <tr><td>Déperditions équivalentes</td><td>{{ row.model.ua }} W/K</td></tr>
       <tr><td>Constantes de temps</td>
           <td>{{ row.model.tau_fast }} h et {{ row.model.tau_slow }} h</td></tr>
       <tr><td>Gain extérieur</td><td>{{ row.model.gain_outdoor }}</td></tr>
-      <tr><td>Échantillons utilisés</td><td>{{ row.model.samples }}</td></tr>
       <tr><td>Identifié le</td><td>{{ row.model.fitted_at }}</td></tr>
     </tbody>
   </table>
   {% else %}
   <div class="banner info" style="margin-top:14px">
-    Données suffisantes, modèle pas encore identifié : lance « Identifier le modèle ».
+    Données suffisantes, modèle pas encore identifié : lance l'identification ci-dessous.
   </div>
   {% endif %}
+
+  <div class="actions" style="margin-top:12px">
+    <form method="post" action="history/fit/{{ row.id }}">
+      <button type="submit">Identifier cette pièce</button>
+    </form>
+  </div>
 </fieldset>
 {% endfor %}
 
@@ -122,8 +143,9 @@
 {% endif %}
 
 <div class="muted" style="margin-top:12px">
-  L'identification utilise un ARX d'ordre 2 : <code>T[k] = a1·T[k−1] + a2·T[k−2] + be·Te + bp·P</code>.
-  La seconde variable d'état porte la dynamique de la masse thermique.
+  L'identification essaie un ARX d'ordre 2 puis d'ordre 1, et retient celui qui
+  prédit le mieux sur 12 h. Un trou de plus de 22 minutes coupe la série en
+  segments, jamais franchis par la simulation.
 </div>
 
 {% endblock %}

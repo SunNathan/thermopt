@@ -1,30 +1,38 @@
 """Thermal model identification.
 
-The 2R2C equations are rewritten as a second-order ARX, which makes the fit a
-plain linear least squares instead of a fragile non-linear optimisation:
+Two structures are attempted, because a room held at a constant setpoint has
+very little excitation: the second-order ARX is then ill-conditioned and can
+produce coefficients at the edge of stability. The first-order ARX is much
+better conditioned and often wins on real data.
 
-    T[k] = a1·T[k-1] + a2·T[k-2] + be·Te[k-1] + bp·P[k-1] + c
+    ARX(2): T[k] = a1·T[k-1] + a2·T[k-2] + be·Te[k-1] + bp·P[k-1] + c
+    ARX(1): T[k] = a1·T[k-1]             + be·Te[k-1] + bp·P[k-1] + c
 
-The second state of that ARX carries the slow, mass-like dynamic. Physical
-quantities are *derived* from the coefficients and reported, but the model used
-for prediction stays the identified ARX — honest and stable.
+The series is cut into contiguous segments: a gap would make the recursion
+compare temperatures hours apart.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 
 import numpy as np
 
-from .audit import SAMPLE_HOURS
-
 HORIZON = 48  # 12 h at 15 min
 VALIDATION_STRIDE = 8
 MAX_RMSE = 0.5  # °C, specification § 5.5
 MIN_SAMPLES = 200
+STEP_MINUTES = 15
+STEP_HOURS = STEP_MINUTES / 60
+STEP_SECONDS = STEP_MINUTES * 60
+GAP_FACTOR = 1.5
+EXCITATION_WEIGHT = 3.0
+EXCITATION_POWER = 50.0  # W
+EXCITATION_DELTA_T = 0.15  # K
+
+STRUCTURES = ("arx2", "arx1")
 
 
 @dataclass(slots=True)
@@ -39,6 +47,8 @@ class ModelParameters:
     rmse_12h: float
     samples: int
     fitted_at: str
+    structure: str = "arx2"
+    segments: int = 0
     ua: float | None = None
     tau_fast: float | None = None
     tau_slow: float | None = None
@@ -47,6 +57,7 @@ class ModelParameters:
 
     def to_dict(self) -> dict:
         return {
+            "structure": self.structure,
             "a1": self.a1,
             "a2": self.a2,
             "be": self.be,
@@ -54,6 +65,7 @@ class ModelParameters:
             "c": self.c,
             "rmse_12h": self.rmse_12h,
             "samples": self.samples,
+            "segments": self.segments,
             "fitted_at": self.fitted_at,
             "ua": self.ua,
             "tau_fast": self.tau_fast,
@@ -69,13 +81,15 @@ class ModelParameters:
         try:
             return cls(
                 a1=float(data["a1"]),
-                a2=float(data["a2"]),
+                a2=float(data.get("a2", 0.0)),
                 be=float(data["be"]),
                 bp=float(data["bp"]),
                 c=float(data["c"]),
                 rmse_12h=float(data["rmse_12h"]),
                 samples=int(data["samples"]),
                 fitted_at=str(data["fitted_at"]),
+                structure=str(data.get("structure", "arx2")),
+                segments=int(data.get("segments", 0)),
                 ua=data.get("ua"),
                 tau_fast=data.get("tau_fast"),
                 tau_slow=data.get("tau_slow"),
@@ -87,55 +101,195 @@ class ModelParameters:
 
 
 # ---------------------------------------------------------------------------
-# Series preparation
+# Series
 # ---------------------------------------------------------------------------
 @dataclass(slots=True)
 class Series:
-    """Aligned arrays ready for the regression."""
+    """Aligned arrays, split into contiguous segments."""
 
     t_air: np.ndarray
     t_ext: np.ndarray
     power: np.ndarray
     orders: list[str]
+    segments: list[tuple[int, int]] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.t_air)
 
+    @property
+    def segment_count(self) -> int:
+        return max(1, len(self.segments))
 
-def build_series(records: Iterable[dict]) -> Series:
-    """Keep only the samples where every signal is present and usable."""
-    rows: list[tuple[str, float, float, float]] = []
+
+def _epoch(value: object) -> float | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except ValueError:
+        return None
+
+
+def build_series(records: list[dict]) -> Series:
+    """Keep usable samples, sort them, and cut on gaps."""
+    rows: list[tuple[float, str, float, float, float]] = []
     for record in records:
+        stamp = _epoch(record.get("ts"))
+        if stamp is None:
+            continue
         try:
             t_air = float(record["t_air"])
             t_ext = float(record["t_ext"])
             power = float(record["power"])
         except (KeyError, TypeError, ValueError):
             continue
-        order = record.get("order")
-        rows.append((str(order or ""), t_air, t_ext, power))
+        rows.append((stamp, str(record.get("order") or ""), t_air, t_ext, power))
+
+    rows.sort(key=lambda row: row[0])
+
+    segments: list[tuple[int, int]] = []
+    start = 0
+    for index in range(1, len(rows)):
+        if rows[index][0] - rows[index - 1][0] > GAP_FACTOR * STEP_SECONDS:
+            segments.append((start, index))
+            start = index
+    if rows:
+        segments.append((start, len(rows)))
 
     return Series(
-        t_air=np.array([row[1] for row in rows], dtype=float),
-        t_ext=np.array([row[2] for row in rows], dtype=float),
-        power=np.array([row[3] for row in rows], dtype=float),
-        orders=[row[0] for row in rows],
+        t_air=np.array([row[2] for row in rows], dtype=float),
+        t_ext=np.array([row[3] for row in rows], dtype=float),
+        power=np.array([row[4] for row in rows], dtype=float),
+        orders=[row[1] for row in rows],
+        segments=segments,
     )
 
 
-def _design(series: Series, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    ta, te, p = series.t_air, series.t_ext, series.power
-    indices = np.arange(2, len(series))
-    indices = indices[mask[2:]]
-    x = np.column_stack(
-        [ta[indices - 1], ta[indices - 2], te[indices - 1], p[indices - 1], np.ones(len(indices))]
+# ---------------------------------------------------------------------------
+# Simulation
+# ---------------------------------------------------------------------------
+def step(
+    params: ModelParameters, t_prev2: float, t_prev1: float, t_ext: float, power: float
+) -> float:
+    """One prediction step, for either structure."""
+    if params.structure == "arx1":
+        return params.a1 * t_prev1 + params.be * t_ext + params.bp * power + params.c
+    return (
+        params.a1 * t_prev1 + params.a2 * t_prev2 + params.be * t_ext + params.bp * power + params.c
     )
-    return x, ta[indices]
+
+
+def simulate(
+    params: ModelParameters,
+    ta_prev2: float,
+    ta_prev1: float,
+    t_ext: list[float],
+    power: list[float],
+) -> list[float]:
+    """Free-run simulation, one step per element of ``t_ext``/``power``."""
+    ta2, ta1 = ta_prev2, ta_prev1
+    out: list[float] = []
+    for te, pw in zip(t_ext, power, strict=False):
+        value = step(params, ta2, ta1, te, pw)
+        out.append(value)
+        ta2, ta1 = ta1, value
+    return out
 
 
 # ---------------------------------------------------------------------------
 # Fitting
 # ---------------------------------------------------------------------------
+def _design(series: Series, structure: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Rows, targets and weights, built segment by segment."""
+    lag = 2 if structure == "arx2" else 1
+    rows: list[list[float]] = []
+    targets: list[float] = []
+    weights: list[float] = []
+
+    ta, te, p = series.t_air, series.t_ext, series.power
+    for start, end in series.segments:
+        for index in range(start + lag, end):
+            if structure == "arx2":
+                features = [ta[index - 1], ta[index - 2], te[index - 1], p[index - 1], 1.0]
+            else:
+                features = [ta[index - 1], te[index - 1], p[index - 1], 1.0]
+            rows.append(features)
+            targets.append(ta[index])
+
+            moved = abs(p[index - 1] - p[index - 2]) > EXCITATION_POWER
+            changed = abs(ta[index] - ta[index - 1]) > EXCITATION_DELTA_T
+            weights.append(EXCITATION_WEIGHT if (moved or changed) else 1.0)
+
+    return (
+        np.array(rows, dtype=float),
+        np.array(targets, dtype=float),
+        np.array(weights, dtype=float),
+    )
+
+
+def _physical_checks(structure: str, coefficients: np.ndarray) -> list[str]:
+    errors: list[str] = []
+    if structure == "arx2":
+        a1, a2, be, bp = (float(value) for value in coefficients[:4])
+        if not (-2.0 < a1 < 2.0) or not (-1.0 < a2 < 0.0):
+            errors.append(
+                f"ARX2 : coefficients autorégressifs hors du domaine physique (a1={a1:.3f}, a2={a2:.3f})"
+            )
+        if a1 + a2 >= 1.0:
+            errors.append(f"ARX2 : modèle instable (a1+a2={a1 + a2:.3f} ≥ 1)")
+    else:
+        a1, be, bp = (float(value) for value in coefficients[:3])
+        if not (0.0 < a1 < 1.0):
+            errors.append(
+                f"ARX1 : coefficient autorégressif hors du domaine physique (a1={a1:.3f})"
+            )
+
+    be = float(coefficients[2] if structure == "arx2" else coefficients[1])
+    bp = float(coefficients[3] if structure == "arx2" else coefficients[2])
+    if bp <= 0:
+        errors.append(f"{structure.upper()} : la puissance n'a pas d'effet mesurable (bp={bp:.6f})")
+    if be <= 0:
+        errors.append(f"{structure.upper()} : la température extérieure n'a pas d'effet mesurable")
+    return errors
+
+
+def _fit_structure(series: Series, structure: str) -> tuple[ModelParameters | None, list[str]]:
+    x, y, w = _design(series, structure)
+    if len(y) < 50:
+        return None, [f"{structure.upper()} : {len(y)} équations, trop peu pour ajuster"]
+
+    try:
+        coefficients, *_ = np.linalg.lstsq(x * w[:, None], y * w, rcond=None)
+    except np.linalg.LinAlgError as err:  # pragma: no cover
+        return None, [f"{structure.upper()} : régression impossible ({err})"]
+
+    errors = _physical_checks(structure, coefficients)
+    if errors:
+        return None, errors
+
+    if structure == "arx2":
+        a1, a2, be, bp, c = (float(value) for value in coefficients)
+    else:
+        a1, be, bp, c = (float(value) for value in coefficients)
+        a2 = 0.0
+
+    params = ModelParameters(
+        a1=a1,
+        a2=a2,
+        be=be,
+        bp=bp,
+        c=c,
+        rmse_12h=0.0,
+        samples=len(series),
+        fitted_at="",
+        structure=structure,
+        segments=series.segment_count,
+    )
+    params.rmse_12h = round(_free_run_rmse(series, params), 3)
+    _derive_physical(params)
+    return params, []
+
+
 def fit(
     records: list[dict], *, now: datetime | None = None
 ) -> tuple[ModelParameters | None, list[str]]:
@@ -144,58 +298,30 @@ def fit(
     if len(series) < MIN_SAMPLES:
         return None, [f"{len(series)} échantillons exploitables, il en faut au moins {MIN_SAMPLES}"]
 
-    split = int(len(series) * 0.7)
-    train = np.zeros(len(series), dtype=bool)
-    train[:split] = True
+    attempts: list[ModelParameters] = []
+    errors: list[str] = []
+    for structure in STRUCTURES:
+        params, problems = _fit_structure(series, structure)
+        if params is None:
+            errors.extend(problems)
+        else:
+            attempts.append(params)
 
-    x, y = _design(series, train)
-    if len(y) < 50:
-        return None, ["pas assez d'échantillons d'apprentissage"]
-
-    try:
-        coefficients, *_ = np.linalg.lstsq(x, y, rcond=None)
-    except np.linalg.LinAlgError as err:  # pragma: no cover
-        return None, [f"régression impossible : {err}"]
-
-    a1, a2, be, bp, c = (float(value) for value in coefficients)
-    errors = _physical_checks(a1, a2, be, bp)
-    if errors:
+    if not attempts:
         return None, errors
 
-    rmse = _free_run_rmse(series, a1, a2, be, bp, c, start=split)
-    if rmse > MAX_RMSE:
+    best = min(attempts, key=lambda item: item.rmse_12h)
+    if best.rmse_12h > MAX_RMSE:
         errors.append(
-            f"RMSE 12 h de {rmse:.2f} °C, au-delà de la cible de {MAX_RMSE} °C : "
-            "le modèle est rejeté"
+            f"{best.structure.upper()} : RMSE 12 h de {best.rmse_12h:.2f} °C, au-delà de "
+            f"la cible de {MAX_RMSE} °C sur {best.samples} échantillons "
+            f"en {best.segments} segment(s)"
         )
         return None, errors
 
-    params = ModelParameters(
-        a1=a1,
-        a2=a2,
-        be=be,
-        bp=bp,
-        c=c,
-        rmse_12h=round(rmse, 3),
-        samples=len(series),
-        fitted_at=(now or datetime.now()).isoformat(timespec="seconds"),
-        order_power=_mean_power_per_order(series),
-    )
-    _derive_physical(params)
-    return params, []
-
-
-def _physical_checks(a1: float, a2: float, be: float, bp: float) -> list[str]:
-    errors: list[str] = []
-    if not (-2.0 < a1 < 2.0) or not (-1.0 < a2 < 0.0):
-        errors.append("coefficients autorégressifs hors du domaine physique")
-    if a1 + a2 >= 1.0:
-        errors.append("modèle instable (a1 + a2 ≥ 1)")
-    if bp <= 0:
-        errors.append("la puissance n'a pas d'effet mesurable sur la température")
-    if be <= 0:
-        errors.append("la température extérieure n'a pas d'effet mesurable")
-    return errors
+    best.fitted_at = (now or datetime.now()).isoformat(timespec="seconds")
+    best.order_power = _mean_power_per_order(series)
+    return best, []
 
 
 def _mean_power_per_order(series: Series) -> dict[str, float]:
@@ -210,8 +336,8 @@ def _mean_power_per_order(series: Series) -> dict[str, float]:
 
 
 def _derive_physical(params: ModelParameters) -> None:
-    """Static gain, equivalent UA and the two time constants."""
-    denominator = 1.0 - params.a1 - params.a2
+    """Static gain, equivalent UA and the time constants."""
+    denominator = 1.0 - params.a1 - (params.a2 if params.structure == "arx2" else 0.0)
     if denominator > 1e-6 and params.bp > 0:
         gain = params.bp / denominator
         if gain > 0:
@@ -219,7 +345,19 @@ def _derive_physical(params: ModelParameters) -> None:
         if params.be > 0:
             params.gain_outdoor = round(params.be / denominator, 2)
 
+    if params.structure == "arx1":
+        tau = _tau(params.a1)
+        params.tau_fast = tau
+        params.tau_slow = tau
+        return
+
     params.tau_fast, params.tau_slow = _time_constants(params.a1, params.a2)
+
+
+def _tau(pole: float) -> float | None:
+    if not 0 < pole < 1:
+        return None
+    return round(-STEP_HOURS / math.log(pole), 2)
 
 
 def _time_constants(a1: float, a2: float) -> tuple[float | None, float | None]:
@@ -228,65 +366,32 @@ def _time_constants(a1: float, a2: float) -> tuple[float | None, float | None]:
     if discriminant < 0:
         return None, None
     root = math.sqrt(discriminant)
-    poles = [(a1 + root) / 2.0, (a1 - root) / 2.0]
-    taus: list[float] = []
-    for pole in poles:
-        if 0 < pole < 1:
-            taus.append(-SAMPLE_HOURS / math.log(pole))
+    taus = [tau for tau in (_tau((a1 + root) / 2.0), _tau((a1 - root) / 2.0)) if tau]
     if len(taus) != 2:
         return None, None
-    return round(min(taus), 2), round(max(taus), 2)
+    return min(taus), max(taus)
 
 
-# ---------------------------------------------------------------------------
-# Simulation
-# ---------------------------------------------------------------------------
-def simulate(
-    params: ModelParameters,
-    ta_prev2: float,
-    ta_prev1: float,
-    t_ext: list[float],
-    power: list[float],
-) -> list[float]:
-    """Free-run simulation, one step per element of ``t_ext``/``power``."""
-    ta2, ta1 = ta_prev2, ta_prev1
-    out: list[float] = []
-    for te, pw in zip(t_ext, power, strict=False):
-        ta = params.a1 * ta1 + params.a2 * ta2 + params.be * te + params.bp * pw + params.c
-        out.append(ta)
-        ta2, ta1 = ta1, ta
-    return out
-
-
-def _free_run_rmse(
-    series: Series,
-    a1: float,
-    a2: float,
-    be: float,
-    bp: float,
-    c: float,
-    *,
-    start: int,
-    horizon: int = HORIZON,
-) -> float:
-    """Average error of a 12 h free-run, over the validation window."""
-    params = ModelParameters(a1=a1, a2=a2, be=be, bp=bp, c=c, rmse_12h=0.0, samples=0, fitted_at="")
+def _free_run_rmse(series: Series, params: ModelParameters) -> float:
+    """Average error of a 12 h free-run, computed inside each segment."""
+    lag = 2 if params.structure == "arx2" else 1
     ta = series.t_air
     errors: list[float] = []
 
-    index = max(2, start)
-    while index + horizon < len(series):
-        predicted = simulate(
-            params,
-            ta_prev2=float(ta[index - 2]),
-            ta_prev1=float(ta[index - 1]),
-            # The regression predicts T[k] from the inputs at k-1.
-            t_ext=[float(v) for v in series.t_ext[index - 1 : index - 1 + horizon]],
-            power=[float(v) for v in series.power[index - 1 : index - 1 + horizon]],
-        )
-        actual = ta[index : index + horizon]
-        errors.extend((np.array(predicted) - actual).tolist())
-        index += VALIDATION_STRIDE
+    for start, end in series.segments:
+        index = start + lag
+        while index + HORIZON <= end:
+            predicted = simulate(
+                params,
+                ta_prev2=float(ta[index - 2]) if lag == 2 else float(ta[index - 1]),
+                ta_prev1=float(ta[index - 1]),
+                # The regression predicts T[k] from the inputs at k-1.
+                t_ext=[float(v) for v in series.t_ext[index - 1 : index - 1 + HORIZON]],
+                power=[float(v) for v in series.power[index - 1 : index - 1 + HORIZON]],
+            )
+            actual = ta[index : index + HORIZON]
+            errors.extend((np.array(predicted) - actual).tolist())
+            index += VALIDATION_STRIDE
 
     if not errors:
         return float("inf")
@@ -304,6 +409,9 @@ def predict(
     if len(series) < 2:
         return None
     t_ext = float(series.t_ext[-1])
+    lag = 2 if params.structure == "arx2" else 1
+    if len(series) < lag + 1:
+        return None
     predicted = simulate(
         params,
         ta_prev2=float(series.t_air[-2]),

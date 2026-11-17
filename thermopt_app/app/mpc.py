@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from thermopt_lib.core.orders import ACTIVE_ORDERS, Ladder, Order
 
-from .model import ModelParameters
+from .model import ModelParameters, step
 
 STEPS = 96
 DT_HOURS = 0.25
@@ -116,13 +116,7 @@ def _evaluate(ctx: _Context, orders: list[Order]) -> tuple[float, float, list[fl
 
     for index, order in enumerate(orders):
         power = power_for(order, t1, ctx.ladder, ctx.p_max, ctx.band)
-        t_next = (
-            params.a1 * t1
-            + params.a2 * t2
-            + params.be * ctx.t_ext[index]
-            + params.bp * power
-            + params.c
-        )
+        t_next = step(params, t2, t1, ctx.t_ext[index], power)
         cost += ctx.prices[index] * power * DT_HOURS / 1000.0
         deficit = max(0.0, ctx.t_min[index] - t_next)
         penalty += ctx.lam * DT_HOURS * deficit * deficit
@@ -159,13 +153,7 @@ def _greedy(ctx: _Context) -> list[Order]:
         orders.append(best_order)
 
         power = power_for(best_order, t1, ctx.ladder, ctx.p_max, ctx.band)
-        t_next = (
-            ctx.params.a1 * t1
-            + ctx.params.a2 * t2
-            + ctx.params.be * ctx.t_ext[index]
-            + ctx.params.bp * power
-            + ctx.params.c
-        )
+        t_next = step(ctx.params, t2, t1, ctx.t_ext[index], power)
         t2, t1 = t1, t_next
 
     return orders
@@ -181,13 +169,7 @@ def _lookahead(
         if index >= ctx.steps:
             break
         power = power_for(first, t1, ctx.ladder, ctx.p_max, ctx.band)
-        t_next = (
-            ctx.params.a1 * t1
-            + ctx.params.a2 * t2
-            + ctx.params.be * ctx.t_ext[index]
-            + ctx.params.bp * power
-            + ctx.params.c
-        )
+        t_next = step(ctx.params, t2, t1, ctx.t_ext[index], power)
         deficit = max(0.0, ctx.t_min[index] - t_next)
         score += ctx.prices[index] * power * DT_HOURS / 1000.0
         score += ctx.lam * DT_HOURS * deficit * deficit

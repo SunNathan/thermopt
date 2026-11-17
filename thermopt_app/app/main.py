@@ -67,6 +67,19 @@ async def _connect(runtime: WebRuntime) -> SupervisorClient:
     raise SupervisorError("Home Assistant injoignable après plusieurs tentatives")
 
 
+def _log_history_state(history) -> None:
+    """Say out loud what is kept, so a purge is never silent."""
+    months = history.file_range()
+    files = history.files()
+    size = history.size()
+    _LOGGER.info(
+        "Historique : %s fichier(s), %s Ko, plage %s",
+        len(files),
+        size // 1024,
+        f"{months[0]} -> {months[1]}" if months else "vide",
+    )
+
+
 def _load_models(store: JsonStore) -> dict[str, ModelParameters]:
     """Read the identified models; a corrupt file must not block startup."""
     payload = store.load() or {}
@@ -125,6 +138,7 @@ async def run() -> None:
     models = _load_models(model_store)
     runtime.history = history
     runtime.models = models
+    _log_history_state(history)
 
     runner = await start_site(runtime)
 
@@ -148,6 +162,7 @@ async def run() -> None:
         client = await _connect(runtime)
         core_config = await client.core_config()
         tz = _timezone(core_config.get("time_zone"))
+        runtime.timezone = tz
 
         ha = HaClient(client)
         await ha.refresh_states()

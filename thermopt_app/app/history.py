@@ -139,6 +139,10 @@ class HistoryStore:
         With ``keep=2`` in November, September, October and November survive.
         """
         reference = now or datetime.now()
+        if reference.year < 2024:
+            # A wrong clock must never delete history.
+            _LOGGER.error("Purge annulée : horloge suspecte (%s)", reference)
+            return []
         cutoff = reference.year * 12 + reference.month - keep
         removed: list[str] = []
 
@@ -149,6 +153,7 @@ class HistoryStore:
                 continue
             if year * 12 + month < cutoff:
                 try:
+                    _LOGGER.info("Purge de l'historique : %s", path.name)
                     path.unlink()
                     removed.append(path.name)
                 except OSError as err:  # pragma: no cover

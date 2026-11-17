@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.history import DISK_MIN_FREE, RETENTION_MONTHS, HistoryStore, to_csv
@@ -136,3 +136,39 @@ def test_csv_export_handles_missing_values(tmp_path: Path) -> None:
     store.append([{**RECORD, "energy": None}])
 
     assert ",," in to_csv(store.read())
+
+
+# ---------------------------------------------------------------------------
+# Timezone-aware bounds (the export used to raise TypeError)
+# ---------------------------------------------------------------------------
+def test_read_accepts_timezone_aware_bounds(tmp_path: Path) -> None:
+
+    store = _store(tmp_path)
+    store.append([{**RECORD, "ts": "2026-01-15T10:00:00+01:00"}])
+
+    records = store.read(
+        since=datetime(2026, 1, 15, tzinfo=UTC),
+        until=datetime(2026, 1, 16, tzinfo=UTC),
+    )
+    assert len(records) == 1
+
+
+def test_export_bounds_do_not_mix_naive_and_aware(tmp_path: Path) -> None:
+    """Regression: naive bounds against aware timestamps raised TypeError."""
+    store = _store(tmp_path)
+    store.append([{**RECORD, "ts": "2026-01-15T10:00:00+01:00"}])
+
+    # What the web layer does now: build the bound in the stored timezone.
+    since = datetime(2026, 1, 1).replace(tzinfo=UTC)
+    assert len(store.read(since=since)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Purge safety
+# ---------------------------------------------------------------------------
+def test_prune_refuses_a_suspect_clock(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.append([{**RECORD, "ts": "2026-01-10T10:00:00"}])
+
+    assert store.prune(now=datetime(1999, 1, 1)) == []
+    assert len(store.files()) == 1

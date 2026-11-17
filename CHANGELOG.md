@@ -33,7 +33,7 @@ correspondre au tag publié.
 
 ### Modifié
 
-- Version portée à **0.7.0**.
+- Version portée à **0.8.0**.
 
 ## [0.7.0] — 2026-10-31
 
